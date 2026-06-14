@@ -1,0 +1,68 @@
+# Default configuration for the Double Pendulum RL framework.
+# Flat "key: value" subset of YAML (also valid YAML). Lines are "<group>.<field>".
+# CLI flags (e.g. --steps, --seed, --task) override values loaded here.
+
+# ---- physics ----------------------------------------------------------------
+physics.m1: 1.0
+physics.m2: 1.0
+physics.l1: 1.0
+physics.l2: 1.0
+physics.i1: 0.0
+physics.i2: 0.0
+physics.g: 9.81
+physics.b1: 0.02
+physics.b2: 0.02
+physics.dt: 0.0041666667        # 1/240 s
+physics.maxTorque: 8.0
+physics.integrator: RK4         # RK4 | SemiImplicitEuler
+
+# ---- environment ------------------------------------------------------------
+env.actuator: Single            # Single | Dual
+env.task: Stabilize             # SwingUp | Stabilize | Recovery
+env.maxEpisodeSteps: 2000
+env.angularSpeedLimit: 50.0
+env.wUpright: 1.0
+env.wTorque: 0.01
+env.wOmega: 0.005
+env.wSurvival: 0.0
+env.uprightThreshold: 0.9
+env.domainRandomize: false
+env.drMassPct: 0.2
+env.drLengthPct: 0.2
+env.drGravityPct: 0.1
+env.drDampingPct: 0.5
+env.disturbances: false
+env.disturbProb: 0.001
+env.disturbMagnitude: 2.0
+
+# ---- ppo --------------------------------------------------------------------
+ppo.hidden1: 64
+ppo.hidden2: 64
+ppo.gamma: 0.99
+ppo.lambda: 0.95
+ppo.clipEps: 0.2
+ppo.lrActor: 0.0003
+ppo.lrCritic: 0.001
+ppo.entropyCoef: 0.003
+ppo.maxGradNorm: 0.5
+ppo.initLogStd: -0.5
+ppo.epochs: 10
+ppo.miniBatch: 64
+ppo.rolloutSteps: 2048
+
+# ---- curriculum -------------------------------------------------------------
+curriculum.enabled: false
+curriculum.startGravityScale: 0.3
+curriculum.endGravityScale: 1.0
+curriculum.rampUpdates: 200
+curriculum.startEpisodeSteps: 400
+curriculum.endEpisodeSteps: 2000
+
+# ---- training ---------------------------------------------------------------
+train.seed: 42
+train.totalSteps: 2000000
+train.logEvery: 1
+train.checkpointEvery: 20
+train.runName: ppo_dp
+train.modelDir: models
+train.logDir: logs

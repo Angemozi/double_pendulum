@@ -1,0 +1,29 @@
+# Swing-up task: start hanging, learn to swing up and balance inverted.
+# Uses curriculum learning (weaker gravity first) to make the task tractable.
+physics.integrator: RK4
+physics.maxTorque: 10.0
+
+env.actuator: Dual
+env.task: SwingUp
+env.maxEpisodeSteps: 2000
+env.wUpright: 1.0
+env.wTorque: 0.005
+env.wOmega: 0.002
+env.wSurvival: 0.0
+
+ppo.hidden1: 128
+ppo.hidden2: 128
+ppo.entropyCoef: 0.01
+ppo.rolloutSteps: 4096
+ppo.initLogStd: -0.2
+
+curriculum.enabled: true
+curriculum.startGravityScale: 0.3
+curriculum.endGravityScale: 1.0
+curriculum.rampUpdates: 300
+curriculum.startEpisodeSteps: 600
+curriculum.endEpisodeSteps: 2000
+
+train.seed: 7
+train.totalSteps: 5000000
+train.runName: ppo_swingup

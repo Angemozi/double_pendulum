@@ -1,0 +1,25 @@
+# Stabilize task: start near inverted, learn to hold balance. Domain
+# randomization + disturbances are enabled to encourage a robust controller.
+physics.integrator: RK4
+physics.maxTorque: 8.0
+
+env.actuator: Dual
+env.task: Stabilize
+env.maxEpisodeSteps: 2000
+env.wUpright: 1.0
+env.wTorque: 0.01
+env.wOmega: 0.005
+env.wSurvival: 0.1
+env.domainRandomize: true
+env.disturbances: true
+env.disturbProb: 0.002
+env.disturbMagnitude: 2.0
+
+ppo.hidden1: 64
+ppo.hidden2: 64
+ppo.entropyCoef: 0.003
+ppo.rolloutSteps: 2048
+
+train.seed: 42
+train.totalSteps: 3000000
+train.runName: ppo_stabilize
