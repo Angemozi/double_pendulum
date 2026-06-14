@@ -113,9 +113,15 @@ early-stopping**, **linear LR annealing**, global gradient clipping, and Adam. T
 `targetKL` early-stop, LR anneal, saturating ω-penalty (`omegaRefSpeed`), and **best-checkpoint** tracking
 (`<run>_best.ckpt`) so you deploy the peak policy rather than a drifted one.
 
-**Advanced features:** curriculum learning (ramps gravity & episode length), domain randomization (masses,
-lengths, gravity, damping), disturbance injection (random impulses), CSV replay export (`dp_eval --csv`),
-multi-threaded data-parallel updates (`--workers`), and an optional **LibTorch/CUDA backend** (`dp_train_torch`).
+**Advanced features:** curriculum learning (ramps gravity, episode length, **and disturbance intensity**),
+domain randomization (masses, lengths, gravity, damping/friction, **timestep**), disturbance injection,
+**energy-aware reward shaping** (`wEnergy`, swing-up aid), CSV replay export, multi-threaded data-parallel
+updates (`--workers`), **vectorized environments** (`numEnvs` — decorrelated per-env GAE), and an optional
+**LibTorch/CUDA backend** (`dp_train_torch`).
+
+**Platform tooling (`dp_simulator`):** self-describing checkpoints (auto-loads the run's sidecar config),
+**live hot-reload** of a training checkpoint, **policy/value/σ heatmaps** over state space, and an automatic
+**episode library** that captures and replays best / failure / recovery episodes.
 
 ---
 
@@ -151,10 +157,14 @@ real-time rendering, fully separate from training. **Simulator controls:**
 | `T` | stochastic ↔ deterministic | `Home` | reset camera |
 | `←/→/↑/↓` | impulse disturbance | `1/2/3` | load best/latest/final |
 | `D` | random kick | `O` / `P` | record / save replay |
-| `C` | clear trail | `Esc` | quit |
+| `F` | follow-latest (hot-reload) | `H` | cycle policy/value/σ heatmap |
+| `C` | clear trail | `L` | cycle library playback (best/fail/recovery) |
 
 The HUD shows reward, torque, value V(s), entropy, σ, upright score, and energy, with live graphs of
-reward/value/entropy/σ and a fading trajectory trail of the tip.
+reward/value/entropy/σ and a fading trajectory trail of the tip. Checkpoints are **self-describing**, so
+`dp_simulator --model models/<run>_best.ckpt` needs no `--config`. Point `F` (follow-latest) at
+`<run>_latest.ckpt` to watch a live training run improve in real time; `H` overlays a policy/value/σ heatmap
+swept over (θ₁, θ₂); the simulator auto-captures best/failure/recovery episodes for `L` playback.
 
 ### With the legacy visualizer (SDL2 + Dear ImGui)
 

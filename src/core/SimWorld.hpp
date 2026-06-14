@@ -22,6 +22,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 #include "core/Config.hpp"
 #include "rl/DoublePendulumEnv.hpp"
@@ -57,6 +58,11 @@ public:
     bool hasPolicy() const noexcept { return hasPolicy_; }
     const std::string& policyName() const noexcept { return policyName_; }
 
+    // Live hot-reload: if the currently-loaded checkpoint file has changed on
+    // disk since it was loaded, reload it. Returns true if a reload happened.
+    // This lets the simulator watch a training run's latest.ckpt in real time.
+    bool reloadIfChanged();
+
     // Start a fresh episode (uses the env's task reset distribution).
     void reset();
 
@@ -83,6 +89,13 @@ public:
     struct Probe { double torque1, torque2, value, meanSigma; };
     Probe probe(const State& s);
 
+    // A res x res scalar field sampled over (theta1, theta2) in [-pi,pi] (with
+    // omega = 0), row-major, plus its min/max for color mapping. This is the
+    // primitive behind the policy/value/sigma heatmap overlays.
+    enum class HeatmapKind { Torque, Value, Sigma };
+    struct Heatmap { int res = 0; std::vector<float> data; float lo = 0, hi = 1; };
+    Heatmap computeHeatmap(int res, HeatmapKind kind);
+
 private:
     SimFrame buildFrame(const Action& torque, const StepResult& sr,
                         const rl::PolicyOutput* po);
@@ -93,6 +106,8 @@ private:
     bool               hasPolicy_  = false;
     bool               stochastic_ = false;
     std::string        policyName_;
+    std::string        policyPath_;                     // for hot-reload watching
+    std::filesystem::file_time_type policyMtime_{};     // last seen modification time
     Observation        obs_;
     double             episodeReturn_ = 0.0;
     SimFrame           last_;

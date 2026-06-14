@@ -49,6 +49,7 @@ public:
 
 private:
     void applyCurriculum();
+    void collectVectorized();   // fills buffer_ from numEnvs parallel envs (per-env GAE)
     void publishSnapshot(const rl::PolicyOutput& po, const StepResult& sr,
                          const Action& torque);
     void pushEpisodeReturn(double ret);
@@ -59,6 +60,13 @@ private:
     rl::PPOAgent      agent_;
     rl::RolloutBuffer buffer_;
     SharedState*      shared_ = nullptr;
+
+    // Vectorized-collection state (used only when cfg_.ppo.numEnvs > 1).
+    int                            numEnvs_ = 1;
+    std::vector<DoublePendulumEnv> vecEnvs_;
+    std::vector<Observation>       vecObs_;
+    std::vector<double>            vecReturns_;
+    std::vector<rl::RolloutBuffer> vecBuffers_;
 
     Observation       obs_;            // current observation (persists across rollouts)
     double            episodeReturn_ = 0.0;

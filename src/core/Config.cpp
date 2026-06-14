@@ -14,6 +14,23 @@
 #include <algorithm>
 #include <cctype>
 
+namespace {
+const char* integratorName(dp::IntegratorType t) {
+    return t == dp::IntegratorType::RK4 ? "RK4" : "SemiImplicitEuler";
+}
+const char* actuatorName(dp::ActuatorMode m) {
+    return m == dp::ActuatorMode::Dual ? "Dual" : "Single";
+}
+const char* taskName(dp::TaskType t) {
+    switch (t) {
+        case dp::TaskType::SwingUp:   return "SwingUp";
+        case dp::TaskType::Stabilize: return "Stabilize";
+        case dp::TaskType::Recovery:  return "Recovery";
+    }
+    return "Stabilize";
+}
+} // namespace
+
 namespace dp {
 namespace {
 
@@ -97,6 +114,7 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "env.wTorque")  env.wTorque  = d();
         else if (key == "env.wOmega")   env.wOmega   = d();
         else if (key == "env.wSurvival")env.wSurvival= d();
+        else if (key == "env.wEnergy")  env.wEnergy  = d();
         else if (key == "env.uprightThreshold") env.uprightThreshold = d();
         else if (key == "env.omegaRefSpeed") env.omegaRefSpeed = d();
         else if (key == "env.domainRandomize") env.domainRandomize = parseBool(val);
@@ -104,6 +122,7 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "env.drLengthPct")  env.drLengthPct = d();
         else if (key == "env.drGravityPct") env.drGravityPct = d();
         else if (key == "env.drDampingPct") env.drDampingPct = d();
+        else if (key == "env.drTimestepPct") env.drTimestepPct = d();
         else if (key == "env.disturbances") env.disturbances = parseBool(val);
         else if (key == "env.disturbProb")  env.disturbProb = d();
         else if (key == "env.disturbMagnitude") env.disturbMagnitude = d();
@@ -128,6 +147,7 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "ppo.miniBatch")   ppo.miniBatch = i();
         else if (key == "ppo.rolloutSteps")ppo.rolloutSteps = i();
         else if (key == "ppo.numWorkers")  ppo.numWorkers = i();
+        else if (key == "ppo.numEnvs")     ppo.numEnvs = i();
         // -- curriculum ------------------------------------------------------
         else if (key == "curriculum.enabled") curriculum.enabled = parseBool(val);
         else if (key == "curriculum.startGravityScale") curriculum.startGravityScale = d();
@@ -135,6 +155,7 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "curriculum.rampUpdates")       curriculum.rampUpdates = i();
         else if (key == "curriculum.startEpisodeSteps") curriculum.startEpisodeSteps = i();
         else if (key == "curriculum.endEpisodeSteps")   curriculum.endEpisodeSteps = i();
+        else if (key == "curriculum.rampDisturbances")  curriculum.rampDisturbances = parseBool(val);
         // -- train -----------------------------------------------------------
         else if (key == "train.seed") train.seed = static_cast<std::uint64_t>(std::stoull(val));
         else if (key == "train.totalSteps")    train.totalSteps = ll();
@@ -146,6 +167,30 @@ bool Config::loadFromFile(const std::string& path) {
         else DP_LOG_WARN("Config: ignoring unknown key '%s'", key.c_str());
     }
     DP_LOG_INFO("Config: loaded '%s'", path.c_str());
+    return true;
+}
+
+bool Config::saveToFile(const std::string& path) const {
+    std::ofstream os(path, std::ios::trunc);
+    if (!os.is_open()) {
+        DP_LOG_ERROR("Config: could not write '%s'", path.c_str());
+        return false;
+    }
+    os.precision(10);
+    os << "# Auto-generated self-describing config for this run.\n";
+    os << "physics.m1: " << physics.m1 << "\nphysics.m2: " << physics.m2 << '\n';
+    os << "physics.l1: " << physics.l1 << "\nphysics.l2: " << physics.l2 << '\n';
+    os << "physics.i1: " << physics.i1 << "\nphysics.i2: " << physics.i2 << '\n';
+    os << "physics.g: " << physics.g << "\nphysics.b1: " << physics.b1
+       << "\nphysics.b2: " << physics.b2 << '\n';
+    os << "physics.dt: " << physics.dt << "\nphysics.maxTorque: " << physics.maxTorque << '\n';
+    os << "physics.integrator: " << integratorName(physics.integrator) << '\n';
+    os << "env.actuator: " << actuatorName(env.actuator) << '\n';
+    os << "env.task: " << taskName(env.task) << '\n';
+    os << "env.maxEpisodeSteps: " << env.maxEpisodeSteps << '\n';
+    os << "env.omegaRefSpeed: " << env.omegaRefSpeed << '\n';
+    os << "ppo.hidden1: " << ppo.hidden1 << "\nppo.hidden2: " << ppo.hidden2 << '\n';
+    os << "ppo.minLogStd: " << ppo.minLogStd << '\n';
     return true;
 }
 

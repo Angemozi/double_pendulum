@@ -25,6 +25,7 @@ env.wUpright: 1.0
 env.wTorque: 0.01
 env.wOmega: 0.005
 env.wSurvival: 0.0
+env.wEnergy: 0.0                # energy-aware shaping toward E_top (swing-up aid)
 env.uprightThreshold: 0.9
 env.omegaRefSpeed: 8.0          # saturating omega penalty ref; <=0 = old unbounded
 env.domainRandomize: false
@@ -32,6 +33,7 @@ env.drMassPct: 0.2
 env.drLengthPct: 0.2
 env.drGravityPct: 0.1
 env.drDampingPct: 0.5
+env.drTimestepPct: 0.0          # randomize integration dt (robustness)
 env.disturbances: false
 env.disturbProb: 0.001
 env.disturbMagnitude: 2.0
@@ -56,6 +58,7 @@ ppo.epochs: 10
 ppo.miniBatch: 64
 ppo.rolloutSteps: 2048
 ppo.numWorkers: 0               # 0 = auto (all CPU cores); 1 = single-thread
+ppo.numEnvs: 1                 # vectorized envs (>1 decorrelates the batch)
 
 # ---- curriculum -------------------------------------------------------------
 curriculum.enabled: false

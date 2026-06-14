@@ -1,0 +1,35 @@
+# Recovery-focused training: start near upright with disturbances, learn a robust
+# controller that recovers from kicks. Uses vectorized envs, domain randomization,
+# and a disturbance curriculum that ramps the kick intensity over training.
+physics.integrator: RK4
+physics.maxTorque: 8.0
+
+env.actuator: Dual
+env.task: Recovery
+env.maxEpisodeSteps: 2000
+env.wUpright: 1.0
+env.wTorque: 0.01
+env.wOmega: 0.005
+env.wSurvival: 0.1
+env.omegaRefSpeed: 8.0
+env.domainRandomize: true
+env.drTimestepPct: 0.1
+env.disturbances: true
+env.disturbProb: 0.004
+env.disturbMagnitude: 3.0
+
+ppo.hidden1: 128
+ppo.hidden2: 128
+ppo.rolloutSteps: 4096
+ppo.numEnvs: 16                 # 16 decorrelated trajectories per update
+ppo.entropyCoef: 0.005
+
+curriculum.enabled: true
+curriculum.rampUpdates: 250
+curriculum.startEpisodeSteps: 800
+curriculum.endEpisodeSteps: 2000
+curriculum.rampDisturbances: true   # ramp kick intensity 0 -> 1
+
+train.seed: 11
+train.totalSteps: 5000000
+train.runName: ppo_recovery

@@ -42,10 +42,13 @@ DoublePendulumEnv::DoublePendulumEnv(const Config& cfg)
       episodeStepLimit_(cfg.env.maxEpisodeSteps),
       nominalGravity_(cfg.physics.g) {}
 
-void DoublePendulumEnv::setDifficulty(double gravityScale, int maxEpisodeSteps) {
-    // Curriculum scales gravity (weaker = easier to balance) and the horizon.
+void DoublePendulumEnv::setDifficulty(double gravityScale, int maxEpisodeSteps,
+                                      double disturbScale) {
+    // Curriculum scales gravity (weaker = easier to balance), the horizon, and
+    // the disturbance intensity (recovery curriculum).
     basephysics_.g   = nominalGravity_ * gravityScale;
     episodeStepLimit_ = maxEpisodeSteps;
+    disturbScale_     = disturbScale;
 }
 
 Observation DoublePendulumEnv::reset(std::uint64_t seed) {
@@ -103,15 +106,19 @@ void DoublePendulumEnv::applyDomainRandomization() {
     p.g  = jitter(basephysics_.g,  cfg_.env.drGravityPct);
     p.b1 = jitter(basephysics_.b1, cfg_.env.drDampingPct);
     p.b2 = jitter(basephysics_.b2, cfg_.env.drDampingPct);
+    if (cfg_.env.drTimestepPct > 0.0)
+        p.dt = jitter(basephysics_.dt, cfg_.env.drTimestepPct);
 }
 
 void DoublePendulumEnv::maybeInjectDisturbance() {
-    if (!cfg_.env.disturbances) return;
-    if (rng_.uniform01() >= cfg_.env.disturbProb) return;
-    // Apply an instantaneous angular-velocity kick to model an external impulse.
+    if (!cfg_.env.disturbances || disturbScale_ <= 0.0) return;
+    if (rng_.uniform01() >= cfg_.env.disturbProb * disturbScale_) return;
+    // Apply an instantaneous angular-velocity kick to model an external impulse,
+    // scaled by the (curriculum-controlled) disturbance intensity.
+    const double mag = cfg_.env.disturbMagnitude * disturbScale_;
     State s = pendulum_.state();
-    s.omega1 += rng_.gaussian(0.0, cfg_.env.disturbMagnitude);
-    s.omega2 += rng_.gaussian(0.0, cfg_.env.disturbMagnitude);
+    s.omega1 += rng_.gaussian(0.0, mag);
+    s.omega2 += rng_.gaussian(0.0, mag);
     pendulum_.setState(s);
 }
 
@@ -172,6 +179,17 @@ double DoublePendulumEnv::computeReward(const Action& a) const noexcept {
              - e.wTorque  * torqueCost
              - e.wOmega   * omegaCost
              + e.wSurvival;
+
+    // Energy-aware shaping: drive total mechanical energy toward E_top, the
+    // energy of the (motionless) upright configuration. Normalized by |E_top| so
+    // the term is scale-free. Helps the swing-up task pump energy efficiently.
+    if (e.wEnergy > 0.0) {
+        const PhysicsConfig& p = pendulum_.params();
+        const double eTop = (p.m1 + p.m2) * p.g * p.l1 + p.m2 * p.g * p.l2;
+        const double eNow = pendulum_.energy();
+        const double eScale = std::abs(eTop) + 1e-6;
+        r -= e.wEnergy * std::abs(eNow - eTop) / eScale;
+    }
     return r;
 }
 

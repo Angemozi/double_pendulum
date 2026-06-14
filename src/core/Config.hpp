@@ -51,6 +51,10 @@ struct EnvConfig {
     double wTorque    = 0.01;            // penalty per unit torque^2
     double wOmega     = 0.005;           // penalty per unit angular velocity^2
     double wSurvival  = 0.0;             // flat per-step bonus for staying alive
+    // Energy-aware shaping: penalize |E - E_top| (energy of the upright rest
+    // configuration). Classic swing-up aid -- rewards pumping the system to the
+    // energy level required to reach the top. 0 disables.
+    double wEnergy    = 0.0;
     double uprightThreshold = 0.9;       // cos-based threshold counted as "balanced"
     // Reference angular speed for the SATURATING omega penalty. The raw
     // (omega1^2+omega2^2) term is unbounded and at high spin dwarfs the upright
@@ -63,7 +67,8 @@ struct EnvConfig {
     double drMassPct   = 0.2;            // +/- fraction on masses
     double drLengthPct = 0.2;            // +/- fraction on lengths
     double drGravityPct= 0.1;            // +/- fraction on gravity
-    double drDampingPct= 0.5;            // +/- fraction on damping
+    double drDampingPct= 0.5;            // +/- fraction on damping (joint friction)
+    double drTimestepPct= 0.0;           // +/- fraction on the integration dt
     // Disturbance injection --------------------------------------------------
     bool   disturbances     = false;
     double disturbProb      = 0.001;     // per-step probability of an impulse
@@ -99,6 +104,11 @@ struct PpoConfig {
     // single-threaded (bit-exact reproducible across machines). >1 => fixed
     // worker count (reproducible for that count). See PPOAgent::update.
     int    numWorkers  = 0;
+    // Vectorized environments: number of parallel envs collecting the rollout.
+    // >1 decorrelates the batch (each env is an independent trajectory with its
+    // own seed and GAE), which improves PPO stability. Each env contributes
+    // rolloutSteps/numEnvs steps. 1 = classic single-env collection.
+    int    numEnvs     = 1;
 };
 
 struct CurriculumConfig {
@@ -108,6 +118,9 @@ struct CurriculumConfig {
     int    rampUpdates       = 200;      // number of updates to reach full difficulty
     int    startEpisodeSteps = 400;      // begin with shorter episodes
     int    endEpisodeSteps   = 2000;     // ramp to full episode length
+    // Disturbance curriculum: ramp the disturbance intensity 0 -> 1 over
+    // rampUpdates (requires env.disturbances). Train recovery progressively.
+    bool   rampDisturbances  = false;
 };
 
 struct TrainConfig {
@@ -130,6 +143,12 @@ struct Config {
     // Load overrides from a flat-YAML file. Unknown keys are ignored (with a
     // warning) so configs are forward compatible. Returns false on file error.
     bool loadFromFile(const std::string& path);
+
+    // Dump the full config back to a flat-YAML file. Used to write a SELF-
+    // DESCRIBING sidecar next to checkpoints so the simulator can reconstruct
+    // the exact env + network without the original config (see Trainer / the
+    // simulator's checkpoint auto-load).
+    bool saveToFile(const std::string& path) const;
 };
 
 } // namespace dp

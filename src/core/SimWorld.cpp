@@ -40,8 +40,22 @@ bool SimWorld::loadPolicy(const std::string& path) {
     agent_ = std::move(agent);
     hasPolicy_ = true;
     policyName_ = std::filesystem::path(path).filename().string();
+    policyPath_ = path;
+    std::error_code ec;
+    policyMtime_ = std::filesystem::last_write_time(path, ec);
     DP_LOG_INFO("SimWorld: loaded policy '%s'", policyName_.c_str());
     return true;
+}
+
+bool SimWorld::reloadIfChanged() {
+    if (policyPath_.empty()) return false;
+    std::error_code ec;
+    const auto mtime = std::filesystem::last_write_time(policyPath_, ec);
+    if (ec) return false;                       // file vanished/locked: skip quietly
+    if (mtime == policyMtime_) return false;    // unchanged
+    // The trainer may be mid-write; loadPolicy() validates and fails safely, in
+    // which case we keep the previous policy and retry on the next change.
+    return loadPolicy(policyPath_);
 }
 
 void SimWorld::reset() {
@@ -107,6 +121,33 @@ SimFrame SimWorld::buildFrame(const Action& torque, const StepResult& sr,
         f.entropy   = entropyFromSigma(po->sigma);
     }
     return f;
+}
+
+SimWorld::Heatmap SimWorld::computeHeatmap(int res, HeatmapKind kind) {
+    Heatmap hm;
+    hm.res = res;
+    hm.data.assign(static_cast<std::size_t>(res) * res, 0.0f);
+    if (!hasPolicy_ || res <= 0) { hm.lo = 0.0f; hm.hi = 1.0f; return hm; }
+
+    float lo = 1e30f, hi = -1e30f;
+    for (int j = 0; j < res; ++j) {
+        // y axis -> theta2 in [-pi, pi]
+        const double th2 = -math::kPi + math::kTwoPi * (j + 0.5) / res;
+        for (int i = 0; i < res; ++i) {
+            const double th1 = -math::kPi + math::kTwoPi * (i + 0.5) / res;
+            const Probe p = probe(State{th1, th2, 0.0, 0.0});
+            float v = 0.0f;
+            switch (kind) {
+                case HeatmapKind::Torque: v = static_cast<float>(p.torque1); break;
+                case HeatmapKind::Value:  v = static_cast<float>(p.value);   break;
+                case HeatmapKind::Sigma:  v = static_cast<float>(p.meanSigma); break;
+            }
+            hm.data[static_cast<std::size_t>(j) * res + i] = v;
+            lo = std::min(lo, v); hi = std::max(hi, v);
+        }
+    }
+    hm.lo = lo; hm.hi = (hi - lo < 1e-6f) ? lo + 1.0f : hi;
+    return hm;
 }
 
 SimWorld::Probe SimWorld::probe(const State& s) {

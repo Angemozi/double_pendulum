@@ -73,8 +73,10 @@ public:
     util::Rng& rng() noexcept { return rng_; }
 
     // ---- Curriculum hook ----------------------------------------------------
-    // Scale gravity (0..1 of nominal) and override the episode length limit.
-    void setDifficulty(double gravityScale, int maxEpisodeSteps);
+    // Scale gravity (0..1 of nominal), override the episode length limit, and
+    // scale disturbance intensity (0..1). disturbScale defaults to 1 (full).
+    void setDifficulty(double gravityScale, int maxEpisodeSteps,
+                       double disturbScale = 1.0);
 
 private:
     void  applyDomainRandomization();
@@ -88,6 +90,7 @@ private:
     int            stepCount_ = 0;
     int            episodeStepLimit_ = 0;
     double         nominalGravity_ = 9.81;
+    double         disturbScale_ = 1.0;   // curriculum-scaled disturbance intensity
     Action         lastAction_{};
 };
 

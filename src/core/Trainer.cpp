@@ -27,6 +27,10 @@ Trainer::Trainer(const Config& cfg, SharedState* shared)
     std::filesystem::create_directories(cfg_.train.modelDir, ec);
     std::filesystem::create_directories(cfg_.train.logDir, ec);
 
+    // Self-describing sidecar: the simulator auto-loads this next to a checkpoint
+    // so it can reconstruct the exact env + network without the original config.
+    cfg_.saveToFile(cfg_.train.modelDir + "/" + cfg_.train.runName + "_config.yaml");
+
     // Open the statistics CSV (reward curve + diagnostics).
     const std::string csvPath = cfg_.train.logDir + "/" + cfg_.train.runName + "_stats.csv";
     csv_.open(csvPath, {"update", "globalStep", "avgReturn100", "policyLoss",
@@ -34,10 +38,26 @@ Trainer::Trainer(const Config& cfg, SharedState* shared)
                         "meanStd", "entropyCoef", "simRate"});
 
     obs_ = env_.reset();
+
+    // Set up vectorized environments (each independently seeded) when requested.
+    numEnvs_ = std::max(1, cfg_.ppo.numEnvs);
+    if (numEnvs_ > 1) {
+        vecEnvs_.reserve(static_cast<std::size_t>(numEnvs_));
+        vecBuffers_.resize(static_cast<std::size_t>(numEnvs_));
+        vecObs_.resize(static_cast<std::size_t>(numEnvs_));
+        vecReturns_.assign(static_cast<std::size_t>(numEnvs_), 0.0);
+        const int perEnv = cfg_.ppo.rolloutSteps / numEnvs_ + 1;
+        for (int e = 0; e < numEnvs_; ++e) {
+            vecEnvs_.emplace_back(cfg_);
+            vecObs_[static_cast<std::size_t>(e)] =
+                vecEnvs_[static_cast<std::size_t>(e)].reset(cfg_.train.seed + 1 + e);
+            vecBuffers_[static_cast<std::size_t>(e)].reserve(static_cast<std::size_t>(perEnv));
+        }
+    }
     applyCurriculum();
 
-    DP_LOG_INFO("Trainer: PPO update parallelism = %d worker thread(s)",
-                agent_.numWorkers());
+    DP_LOG_INFO("Trainer: %d env(s), PPO update parallelism = %d worker thread(s)",
+                numEnvs_, agent_.numWorkers());
 }
 
 void Trainer::applyCurriculum() {
@@ -49,7 +69,59 @@ void Trainer::applyCurriculum() {
     const double gScale = math::lerp(c.startGravityScale, c.endGravityScale, t);
     const int    steps  = static_cast<int>(
         math::lerp(c.startEpisodeSteps, c.endEpisodeSteps, t));
-    env_.setDifficulty(gScale, steps);
+    // Disturbance intensity ramps 0 -> 1 when enabled, else stays at full.
+    const double disturbScale = c.rampDisturbances ? t : 1.0;
+    env_.setDifficulty(gScale, steps, disturbScale);
+    for (auto& e : vecEnvs_) e.setDifficulty(gScale, steps, disturbScale);
+}
+
+// Vectorized rollout collection. Each of numEnvs_ envs is an independent
+// trajectory (own seed, own GAE), which decorrelates the PPO batch. Per-env
+// transitions are kept contiguous so GAE never bootstraps across envs; the
+// per-env segments are then concatenated into the shared training buffer.
+void Trainer::collectVectorized() {
+    buffer_.clear();
+    const int T = std::max(1, cfg_.ppo.rolloutSteps / numEnvs_); // steps per env
+    for (auto& b : vecBuffers_) b.clear();
+
+    util::StopWatch watch;
+    for (int t = 0; t < T; ++t) {
+        for (int e = 0; e < numEnvs_; ++e) {
+            const std::size_t ei = static_cast<std::size_t>(e);
+            const rl::PolicyOutput po = agent_.act(vecObs_[ei], /*deterministic=*/false);
+            const Action torque = vecEnvs_[ei].decode(po.squashed);
+            const StepResult sr = vecEnvs_[ei].step(torque);
+
+            rl::Transition tr;
+            tr.observation = vecObs_[ei];
+            tr.action      = po.action;
+            tr.logProb     = po.logProb;
+            tr.value       = po.value;
+            tr.reward      = sr.reward;
+            tr.done        = sr.terminal;
+            vecBuffers_[ei].add(std::move(tr));
+
+            vecReturns_[ei] += sr.reward;
+            vecObs_[ei] = sr.observation;
+            ++globalStep_;
+
+            if (sr.terminal || sr.truncated) {
+                pushEpisodeReturn(vecReturns_[ei]);
+                vecReturns_[ei] = 0.0;
+                ++episodeIndex_;
+                vecObs_[ei] = vecEnvs_[ei].reset();
+            }
+        }
+    }
+    simRate_.update(static_cast<double>(T) * numEnvs_, watch.seconds());
+
+    // Per-env GAE bootstrap + concatenate into the shared buffer.
+    for (int e = 0; e < numEnvs_; ++e) {
+        const std::size_t ei = static_cast<std::size_t>(e);
+        const double lastValue = agent_.value(vecObs_[ei]);
+        vecBuffers_[ei].computeGAE(cfg_.ppo.gamma, cfg_.ppo.lambda, lastValue);
+        for (const auto& tr : vecBuffers_[ei].data()) buffer_.add(tr);
+    }
 }
 
 void Trainer::pushEpisodeReturn(double ret) {
@@ -89,6 +161,10 @@ void Trainer::publishSnapshot(const rl::PolicyOutput& po, const StepResult& sr,
 }
 
 rl::UpdateStats Trainer::collectAndUpdate() {
+  if (numEnvs_ > 1) {
+    // Vectorized collection (headless training): fills buffer_ with per-env GAE.
+    collectVectorized();
+  } else {
     buffer_.clear();
     util::StopWatch rolloutWatch;
     int stepsThisRollout = 0;
@@ -161,6 +237,7 @@ rl::UpdateStats Trainer::collectAndUpdate() {
     // ---- Bootstrap value for GAE on the final (possibly non-terminal) state --
     const double lastValue = agent_.value(obs_);
     buffer_.computeGAE(cfg_.ppo.gamma, cfg_.ppo.lambda, lastValue);
+  } // end single-env collection branch
 
     // ---- PPO update -----------------------------------------------------------
     // Report training progress so the agent can anneal its learning rate.
