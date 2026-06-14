@@ -90,8 +90,9 @@ bounded, and RK4 drifts strictly less.
 **Observation (6-D):** `[sin θ1, cos θ1, sin θ2, cos θ2, ω1/scale, ω2/scale]` — the trig encoding is continuous
 across the ±π wrap, which is important for a smooth policy.
 
-**Action:** continuous torque, `Single` (joint 1 only, underactuated) or `Dual`. The network emits values
-squashed to `[-1, 1]` and scaled to `±maxTorque`.
+**Action:** continuous torque, `Single` (joint 1 only, underactuated) or `Dual`. The policy is a **tanh-squashed
+Gaussian**: it samples a pre-squash `u ~ N(μ(s), σ(s))`, applies `a = tanh(u) ∈ (−1,1)`, and scales by
+`±maxTorque`. The buffer keeps `u` so the PPO log-prob is exact (the tanh Jacobian cancels in the ratio).
 
 **Reward shaping:**
 ```
@@ -102,12 +103,19 @@ reward =  wUpright · uprightScore                 (be inverted)
 ```
 `uprightScore ∈ [0,1]` is a dense signal built from `−cos θ`, giving gradient even far from balance.
 
-**PPO:** diagonal-Gaussian policy with a learnable `log_std`, separate actor/critic MLPs, **GAE(λ)** advantages,
-advantage normalization, the **clipped surrogate** objective, an **entropy bonus**, global gradient clipping, and
-Adam. The analytic policy-gradient through the Gaussian is derived inline in `src/rl/PPOAgent.cpp`.
+**PPO:** Gaussian policy with **state-dependent σ** (the actor outputs both μ and a per-state log-σ, bounded by a
+tanh map — exploration is large during recovery, small near balance), separate actor/critic MLPs, **GAE(λ)**
+advantages, advantage normalization, the **clipped surrogate** objective, an **adaptive entropy** bonus, **KL
+early-stopping**, **linear LR annealing**, global gradient clipping, and Adam. The analytic policy-gradient
+(including the backprop through the tanh σ-map) is derived inline in `src/rl/PPOAgent.cpp`.
+
+**Stability controls** (all configurable, see `configs/default.yaml`): adaptive entropy targeting, σ floor,
+`targetKL` early-stop, LR anneal, saturating ω-penalty (`omegaRefSpeed`), and **best-checkpoint** tracking
+(`<run>_best.ckpt`) so you deploy the peak policy rather than a drifted one.
 
 **Advanced features:** curriculum learning (ramps gravity & episode length), domain randomization (masses,
-lengths, gravity, damping), disturbance injection (random impulses), and CSV replay export (`dp_eval --csv`).
+lengths, gravity, damping), disturbance injection (random impulses), CSV replay export (`dp_eval --csv`),
+multi-threaded data-parallel updates (`--workers`), and an optional **LibTorch/CUDA backend** (`dp_train_torch`).
 
 ---
 

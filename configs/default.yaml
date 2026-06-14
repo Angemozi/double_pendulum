@@ -26,6 +26,7 @@ env.wTorque: 0.01
 env.wOmega: 0.005
 env.wSurvival: 0.0
 env.uprightThreshold: 0.9
+env.omegaRefSpeed: 8.0          # saturating omega penalty ref; <=0 = old unbounded
 env.domainRandomize: false
 env.drMassPct: 0.2
 env.drLengthPct: 0.2
@@ -46,9 +47,15 @@ ppo.lrCritic: 0.001
 ppo.entropyCoef: 0.003
 ppo.maxGradNorm: 0.5
 ppo.initLogStd: -0.5
+ppo.minLogStd: -2.0             # per-state log-std floor (sigma >= exp(min))
+ppo.targetKL: 0.02             # KL early-stop threshold (0 disables)
+ppo.annealLr: true             # linearly decay learning rate over training
+ppo.adaptiveEntropy: true      # auto-tune entropy coef toward the target
+ppo.targetEntropyPerDim: 0.4   # entropy setpoint per action dimension
 ppo.epochs: 10
 ppo.miniBatch: 64
 ppo.rolloutSteps: 2048
+ppo.numWorkers: 0               # 0 = auto (all CPU cores); 1 = single-thread
 
 # ---- curriculum -------------------------------------------------------------
 curriculum.enabled: false

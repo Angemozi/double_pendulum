@@ -75,6 +75,17 @@ void Linear::applyAdam(double lr, double beta1, double beta2, double eps, int st
     update(b_, gb_, mb_, vb_);
 }
 
+void Linear::copyParamsFrom(const Linear& src) {
+    // Only the trainable parameters are synced; gradients/Adam state stay local.
+    W_ = src.W_;
+    b_ = src.b_;
+}
+
+void Linear::addGradsFrom(const Linear& src) {
+    for (std::size_t k = 0; k < gW_.size(); ++k) gW_[k] += src.gW_[k];
+    for (std::size_t k = 0; k < gb_.size(); ++k) gb_[k] += src.gb_[k];
+}
+
 double Linear::gradNormSquared() const {
     double s = 0.0;
     for (double g : gW_) s += g * g;
@@ -157,6 +168,18 @@ void MLP::applyAdam(double lr, double beta1, double beta2, double eps, int step)
     l1_.applyAdam(lr, beta1, beta2, eps, step);
     l2_.applyAdam(lr, beta1, beta2, eps, step);
     l3_.applyAdam(lr, beta1, beta2, eps, step);
+}
+
+void MLP::copyParamsFrom(const MLP& src) {
+    l1_.copyParamsFrom(src.l1_);
+    l2_.copyParamsFrom(src.l2_);
+    l3_.copyParamsFrom(src.l3_);
+}
+
+void MLP::addGradsFrom(const MLP& src) {
+    l1_.addGradsFrom(src.l1_);
+    l2_.addGradsFrom(src.l2_);
+    l3_.addGradsFrom(src.l3_);
 }
 
 void MLP::serialize(std::ostream& os) const {

@@ -61,10 +61,24 @@ find_package(Threads REQUIRED)
 target_link_libraries(dp_core PUBLIC Threads::Threads)
 
 if(DP_WITH_LIBTORCH)
-    # Optional future backend. Provide -DCMAKE_PREFIX_PATH=/path/to/libtorch.
+    # GPU-capable backend. Provide -DCMAKE_PREFIX_PATH=/path/to/libtorch
+    # (use the CUDA libtorch distribution for GPU acceleration).
     find_package(Torch REQUIRED)
-    target_link_libraries(dp_core PUBLIC ${TORCH_LIBRARIES})
-    target_compile_definitions(dp_core PUBLIC DP_WITH_LIBTORCH=1)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
+    add_executable(dp_train_torch src/app/train_torch_main.cpp)
+    # dp_core is built with /W4 -Wconversion etc.; LibTorch headers are noisy, so
+    # the Torch target links dp_core but does NOT inherit dp_warnings.
+    target_link_libraries(dp_train_torch PRIVATE dp_core ${TORCH_LIBRARIES})
+    target_compile_definitions(dp_train_torch PRIVATE DP_WITH_LIBTORCH=1)
+
+    # On Windows, copy the LibTorch DLLs next to the executable.
+    if(MSVC)
+        file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
+        add_custom_command(TARGET dp_train_torch POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${TORCH_DLLS} $<TARGET_FILE_DIR:dp_train_torch>)
+    endif()
 endif()
 
 # ---- Executables ------------------------------------------------------------

@@ -154,7 +154,16 @@ double DoublePendulumEnv::computeReward(const Action& a) const noexcept {
 
     const double torqueCost = (sq(a.torque1) + sq(a.torque2))
                             / std::max(1e-9, sq(cfg_.physics.maxTorque));
-    const double omegaCost  = sq(s.omega1) + sq(s.omega2);
+
+    // Saturating angular-velocity penalty. The raw sum-of-squares is unbounded
+    // and at high spin overwhelms the upright reward, teaching a "don't move"
+    // policy that cannot perform the corrective motion balancing requires. With
+    // omegaRefSpeed>0 we bound the penalty to [0,1) via tanh so it shapes
+    // behavior without ever dominating the objective.
+    const double omegaSq = sq(s.omega1) + sq(s.omega2);
+    const double omegaCost = (e.omegaRefSpeed > 0.0)
+        ? std::tanh(omegaSq / sq(e.omegaRefSpeed))
+        : omegaSq;
 
     double r = e.wUpright * upright
              - e.wTorque  * torqueCost

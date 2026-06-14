@@ -44,6 +44,8 @@ int main(int argc, char** argv) {
         cfg.train.seed = static_cast<std::uint64_t>(std::strtoull(s, nullptr, 10));
     if (const char* s = argValue(argc, argv, "--run"))
         cfg.train.runName = s;
+    if (const char* s = argValue(argc, argv, "--workers"))
+        cfg.ppo.numWorkers = std::atoi(s);
     if (const char* s = argValue(argc, argv, "--task")) {
         if (std::strcmp(s, "SwingUp") == 0)   cfg.env.task = TaskType::SwingUp;
         if (std::strcmp(s, "Stabilize") == 0) cfg.env.task = TaskType::Stabilize;

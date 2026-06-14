@@ -98,6 +98,7 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "env.wOmega")   env.wOmega   = d();
         else if (key == "env.wSurvival")env.wSurvival= d();
         else if (key == "env.uprightThreshold") env.uprightThreshold = d();
+        else if (key == "env.omegaRefSpeed") env.omegaRefSpeed = d();
         else if (key == "env.domainRandomize") env.domainRandomize = parseBool(val);
         else if (key == "env.drMassPct")    env.drMassPct = d();
         else if (key == "env.drLengthPct")  env.drLengthPct = d();
@@ -118,9 +119,15 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "ppo.valueCoef")   ppo.valueCoef = d();
         else if (key == "ppo.maxGradNorm") ppo.maxGradNorm = d();
         else if (key == "ppo.initLogStd")  ppo.initLogStd = d();
+        else if (key == "ppo.minLogStd")   ppo.minLogStd = d();
+        else if (key == "ppo.targetKL")    ppo.targetKL = d();
+        else if (key == "ppo.annealLr")    ppo.annealLr = parseBool(val);
+        else if (key == "ppo.adaptiveEntropy") ppo.adaptiveEntropy = parseBool(val);
+        else if (key == "ppo.targetEntropyPerDim") ppo.targetEntropyPerDim = d();
         else if (key == "ppo.epochs")      ppo.epochs = i();
         else if (key == "ppo.miniBatch")   ppo.miniBatch = i();
         else if (key == "ppo.rolloutSteps")ppo.rolloutSteps = i();
+        else if (key == "ppo.numWorkers")  ppo.numWorkers = i();
         // -- curriculum ------------------------------------------------------
         else if (key == "curriculum.enabled") curriculum.enabled = parseBool(val);
         else if (key == "curriculum.startGravityScale") curriculum.startGravityScale = d();

@@ -31,10 +31,13 @@ Trainer::Trainer(const Config& cfg, SharedState* shared)
     const std::string csvPath = cfg_.train.logDir + "/" + cfg_.train.runName + "_stats.csv";
     csv_.open(csvPath, {"update", "globalStep", "avgReturn100", "policyLoss",
                         "valueLoss", "entropy", "approxKL", "clipFraction",
-                        "meanStd", "simRate"});
+                        "meanStd", "entropyCoef", "simRate"});
 
     obs_ = env_.reset();
     applyCurriculum();
+
+    DP_LOG_INFO("Trainer: PPO update parallelism = %d worker thread(s)",
+                agent_.numWorkers());
 }
 
 void Trainer::applyCurriculum() {
@@ -113,7 +116,9 @@ rl::UpdateStats Trainer::collectAndUpdate() {
 
         // ---- Policy step ----------------------------------------------------
         const rl::PolicyOutput po = agent_.act(obs_, /*deterministic=*/false);
-        const Action torque = env_.decode(po.action);
+        // The environment receives the tanh-squashed action; the buffer keeps the
+        // pre-squash sample (po.action) so the PPO log-prob can be recomputed.
+        const Action torque = env_.decode(po.squashed);
         const StepResult sr = env_.step(torque);
 
         // ---- Store transition ----------------------------------------------
@@ -158,21 +163,39 @@ rl::UpdateStats Trainer::collectAndUpdate() {
     buffer_.computeGAE(cfg_.ppo.gamma, cfg_.ppo.lambda, lastValue);
 
     // ---- PPO update -----------------------------------------------------------
+    // Report training progress so the agent can anneal its learning rate.
+    if (cfg_.train.totalSteps > 0)
+        agent_.setProgress(static_cast<double>(globalStep_) /
+                           static_cast<double>(cfg_.train.totalSteps));
     lastStats_ = agent_.update(buffer_);
     ++updateCount_;
     applyCurriculum();
 
+    // ---- Best-checkpoint tracking (rollback strategy) ------------------------
+    // The policy can peak and then drift; always keep the highest-scoring model
+    // around as '<run>_best.ckpt' so deployment/rollback uses the peak, not the
+    // last (possibly degraded) policy. Requires a full averaging window.
+    if (recentReturns_.size() >= 100) {
+        const double avg = avgReturn();
+        if (avg > bestAvgReturn_) {
+            bestAvgReturn_ = avg;
+            agent_.save(cfg_.train.modelDir + "/" + cfg_.train.runName + "_best.ckpt");
+        }
+    }
+
     // ---- Logging --------------------------------------------------------------
     if (updateCount_ % std::max(1, cfg_.train.logEvery) == 0) {
         DP_LOG_INFO("upd %4d | step %9lld | avgRet100 %8.2f | pLoss %7.4f | "
-                    "vLoss %7.4f | ent %6.3f | KL %6.4f | clip %4.2f | std %5.3f | %6.0f sps",
+                    "vLoss %7.4f | ent %6.3f | KL %6.4f | clip %4.2f | std %5.3f | eC %6.4f | %6.0f sps",
                     updateCount_, globalStep_, avgReturn(), lastStats_.policyLoss,
                     lastStats_.valueLoss, lastStats_.entropy, lastStats_.approxKL,
-                    lastStats_.clipFraction, lastStats_.meanStd, simRate_.rate());
+                    lastStats_.clipFraction, lastStats_.meanStd, lastStats_.entropyCoef,
+                    simRate_.rate());
         if (csv_.isOpen())
             csv_.writeRow(updateCount_, globalStep_, avgReturn(), lastStats_.policyLoss,
                           lastStats_.valueLoss, lastStats_.entropy, lastStats_.approxKL,
-                          lastStats_.clipFraction, lastStats_.meanStd, simRate_.rate());
+                          lastStats_.clipFraction, lastStats_.meanStd,
+                          lastStats_.entropyCoef, simRate_.rate());
     }
 
     // ---- Checkpoint -----------------------------------------------------------
@@ -205,7 +228,7 @@ double Trainer::evaluateEpisode(bool publishSnapshots) {
     double ret = 0.0;
     for (int i = 0; i < cfg_.env.maxEpisodeSteps; ++i) {
         const rl::PolicyOutput po = agent_.act(obs, /*deterministic=*/true);
-        const Action torque = env_.decode(po.action);
+        const Action torque = env_.decode(po.squashed);
         const StepResult sr = env_.step(torque);
         ret += sr.reward;
         obs = sr.observation;

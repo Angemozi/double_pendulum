@@ -52,6 +52,12 @@ struct EnvConfig {
     double wOmega     = 0.005;           // penalty per unit angular velocity^2
     double wSurvival  = 0.0;             // flat per-step bonus for staying alive
     double uprightThreshold = 0.9;       // cos-based threshold counted as "balanced"
+    // Reference angular speed for the SATURATING omega penalty. The raw
+    // (omega1^2+omega2^2) term is unbounded and at high spin dwarfs the upright
+    // reward (the diagnosed reward trap). With omegaRefSpeed>0 the penalty
+    // becomes wOmega*tanh((w1^2+w2^2)/omegaRefSpeed^2), bounded by wOmega so it
+    // can never dominate. Set <=0 to restore the old unbounded behavior.
+    double omegaRefSpeed = 8.0;
     // Domain randomization (applied at reset when enabled) -------------------
     bool   domainRandomize = false;
     double drMassPct   = 0.2;            // +/- fraction on masses
@@ -76,9 +82,23 @@ struct PpoConfig {
     double valueCoef   = 0.5;            // value loss weight (unused: separate opt)
     double maxGradNorm = 0.5;            // global gradient clipping
     double initLogStd  = -0.5;           // initial log std of the Gaussian policy
+    // --- stability / exploration controls (see PPOAgent) --------------------
+    double minLogStd   = -2.0;           // floor on log std => sigma >= exp(min)
+    double targetKL    = 0.02;           // KL early-stop threshold (0 disables)
+    bool   annealLr    = true;           // linearly decay LR over training
+    // Adaptive entropy: instead of a fixed entropyCoef, automatically raise/lower
+    // it to hold the policy's entropy near targetEntropyPerDim * actionDim. This
+    // is the robust cure for exploration collapse -- the coefficient grows when
+    // entropy falls too far, directly counteracting the 1/sigma^2 overconfidence.
+    bool   adaptiveEntropy   = true;
+    double targetEntropyPerDim = 0.4;    // ~ std 0.37/dim; tune for exploration
     int    epochs      = 10;             // optimization epochs per rollout
     int    miniBatch   = 64;             // minibatch size
     int    rolloutSteps= 2048;           // environment steps per policy update
+    // Data-parallel gradient computation. 0 => auto (use all CPU cores). 1 =>
+    // single-threaded (bit-exact reproducible across machines). >1 => fixed
+    // worker count (reproducible for that count). See PPOAgent::update.
+    int    numWorkers  = 0;
 };
 
 struct CurriculumConfig {

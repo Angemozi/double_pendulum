@@ -66,6 +66,7 @@ private:
     int               updateCount_ = 0;
     int               episodeIndex_ = 0;
     std::deque<double> recentReturns_; // sliding window for avg-return-100
+    double             bestAvgReturn_ = -1e30; // best avgReturn100 seen so far
 
     util::CsvWriter   csv_;
     util::RateCounter simRate_{0.95};

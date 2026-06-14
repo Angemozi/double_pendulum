@@ -54,15 +54,25 @@ int main(int argc, char** argv) {
     }
 
     double sumReturn = 0.0;
+    double sigmaUpright = 0.0; long long nUpright = 0;   // mean sigma when balanced
+    double sigmaRecover = 0.0; long long nRecover = 0;   // mean sigma when off-balance
     for (int ep = 0; ep < episodes; ++ep) {
         Observation obs = env.reset(seed + ep);
         double ret = 0.0;
         int step = 0;
         for (; step < cfg.env.maxEpisodeSteps; ++step) {
             const rl::PolicyOutput po = agent.act(obs, /*deterministic=*/true);
-            const Action torque = env.decode(po.action);
+            const Action torque = env.decode(po.squashed);
             const StepResult sr = env.step(torque);
             ret += sr.reward;
+
+            // Bucket the policy's exploration magnitude by how upright we are, to
+            // confirm the state-dependent sigma behaves as intended.
+            double meanSigma = 0.0;
+            for (double s : po.sigma) meanSigma += s;
+            meanSigma /= static_cast<double>(po.sigma.size());
+            if (sr.uprightScore > 0.85) { sigmaUpright += meanSigma; ++nUpright; }
+            else                        { sigmaRecover += meanSigma; ++nRecover; }
             if (csv.is_open()) {
                 const State& s = env.getState();
                 csv << ep << ',' << step << ','
@@ -77,6 +87,9 @@ int main(int argc, char** argv) {
         DP_LOG_INFO("eval: episode %d return=%.2f steps=%d", ep, ret, step + 1);
     }
     DP_LOG_INFO("eval: mean return over %d episodes = %.2f", episodes, sumReturn / episodes);
+    if (nUpright > 0 && nRecover > 0)
+        DP_LOG_INFO("eval: state-dependent sigma -> balanced=%.3f  recovery=%.3f  (recovery should be larger)",
+                    sigmaUpright / nUpright, sigmaRecover / nRecover);
     if (csv.is_open()) DP_LOG_INFO("eval: wrote replay CSV '%s'", csvPath);
     return 0;
 }

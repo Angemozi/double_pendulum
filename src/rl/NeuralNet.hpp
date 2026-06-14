@@ -48,6 +48,11 @@ public:
     void zeroGrad();
     void applyAdam(double lr, double beta1, double beta2, double eps, int step);
 
+    // Data-parallel support: copy weights from a master into this worker clone,
+    // and accumulate this clone's gradients back into a master.
+    void copyParamsFrom(const Linear& src);
+    void addGradsFrom(const Linear& src);
+
     // Global L2 norm of accumulated parameter gradients (for grad clipping).
     double gradNormSquared() const;
     void   scaleGrad(double factor);
@@ -82,6 +87,10 @@ public:
     void zeroGrad();
     void clipGradGlobal(double maxNorm);
     void applyAdam(double lr, double beta1, double beta2, double eps, int step);
+
+    // Data-parallel support (see Linear). Used by the multi-threaded PPO update.
+    void copyParamsFrom(const MLP& src);
+    void addGradsFrom(const MLP& src);
 
     int inDim()  const { return inDim_; }
     int outDim() const { return outDim_; }
