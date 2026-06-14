@@ -17,6 +17,10 @@
 #include "rl/RolloutBuffer.hpp"
 #include "rl/NeuralNet.hpp"
 #include "core/Config.hpp"
+#include "core/SimWorld.hpp"
+#include "core/Recorder.hpp"
+
+#include <cstdio>
 
 using namespace dp;
 
@@ -184,6 +188,49 @@ static void testNeuralNet() {
     check(after < before, "Adam reduces a simple quadratic loss");
 }
 
+// ---- 8. SimWorld (decoupled simulation core) -------------------------------
+static void testSimWorld() {
+    std::printf("[sim world]\n");
+    Config cfg;
+    SimWorld world(cfg);
+    bool ok = true;
+    for (int i = 0; i < 500; ++i) {
+        const SimFrame& f = world.step();           // policy-free free dynamics
+        if (std::isnan(f.state.theta1) || std::isnan(f.energy)) ok = false;
+    }
+    check(ok, "SimWorld steps without producing NaNs");
+    // A missing checkpoint must fail gracefully and leave the world policy-free.
+    check(!world.loadPolicy("does_not_exist.ckpt"), "missing policy load fails cleanly");
+    check(!world.hasPolicy(), "world remains policy-free after failed load");
+}
+
+// ---- 9. Recorder round-trip ------------------------------------------------
+static void testRecorder() {
+    std::printf("[recorder]\n");
+    EpisodeRecorder rec;
+    for (int i = 0; i < 50; ++i) {
+        SimFrame f;
+        f.state = State{0.1 * i, -0.2 * i, 0.3, -0.4};
+        f.torque = Action{0.5 * i, -0.1 * i};
+        f.reward = 0.01 * i; f.value = i; f.meanSigma = 0.37; f.energy = -1.5;
+        rec.record(f);
+    }
+    const std::string path = "test_replay.dprec";
+    check(rec.saveBinary(path), "recorder saves binary");
+    EpisodeRecorder loaded;
+    check(loaded.loadBinary(path), "recorder loads binary");
+    check(loaded.size() == rec.size(), "round-trip frame count matches");
+    bool exact = loaded.size() == rec.size();
+    for (std::size_t i = 0; i < loaded.size() && exact; ++i) {
+        if (loaded.at(i).theta1 != rec.at(i).theta1) exact = false;
+        if (loaded.at(i).torque1 != rec.at(i).torque1) exact = false;
+        if (loaded.at(i).reward != rec.at(i).reward) exact = false;
+    }
+    check(exact, "round-trip frames are bit-identical");
+    checkNear(loaded.totalReturn(), rec.totalReturn(), 1e-12, "totalReturn preserved");
+    std::remove(path.c_str());
+}
+
 int main() {
     std::printf("==== Double Pendulum RL test suite ====\n");
     testAngleMath();
@@ -193,6 +240,8 @@ int main() {
     testEnvDeterminism();
     testGAE();
     testNeuralNet();
+    testSimWorld();
+    testRecorder();
     std::printf("---------------------------------------\n");
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

@@ -64,6 +64,7 @@ public:
         return cfg_.env.actuator == ActuatorMode::Dual ? 2 : 1;
     }
     Observation encode() const;                       // current state -> obs
+    Observation encodeState(const State& s) const;     // arbitrary state -> obs
     Action      decode(const std::vector<double>& a) const; // policy out -> torque
 
     const DoublePendulum& physics() const noexcept { return pendulum_; }

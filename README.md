@@ -132,7 +132,31 @@ ctest --test-dir build -C Release            # run the validation suite
 This builds `dp_train`, `dp_eval`, `dp_benchmark`, and `dp_tests`. Works with **MSVC, GCC, and Clang**.
 Warnings are enabled project-wide (`/W4` or `-Wall -Wextra -Wpedantic -Wshadow -Wconversion`).
 
-### With the real-time visualizer (SDL2 + Dear ImGui)
+### Real-time simulator (raylib) — recommended
+
+```bash
+cmake -S . -B build-sim -DBUILD_SIMULATOR=ON
+cmake --build build-sim --config Release
+./build-sim/Release/dp_simulator --config configs/stabilize.yaml --model models/<run>_best.ckpt
+```
+raylib is fetched and built automatically (statically linked — no system packages, no DLLs to ship).
+`dp_simulator` is a standalone consumer of `dp_core`: it loads a checkpoint and runs **live inference** with
+real-time rendering, fully separate from training. **Simulator controls:**
+
+| Key | Action | Key | Action |
+|---|---|---|---|
+| `Space` | pause/resume | `[` / `]` | slower / faster |
+| `R` | reset episode | wheel | zoom (about cursor) |
+| `.` | single frame step | right-drag | pan |
+| `T` | stochastic ↔ deterministic | `Home` | reset camera |
+| `←/→/↑/↓` | impulse disturbance | `1/2/3` | load best/latest/final |
+| `D` | random kick | `O` / `P` | record / save replay |
+| `C` | clear trail | `Esc` | quit |
+
+The HUD shows reward, torque, value V(s), entropy, σ, upright score, and energy, with live graphs of
+reward/value/entropy/σ and a fading trajectory trail of the tip.
+
+### With the legacy visualizer (SDL2 + Dear ImGui)
 
 ```bash
 # Requires SDL2 discoverable by find_package (e.g. vcpkg, apt, or SDL2_DIR).

@@ -129,13 +129,16 @@ Action DoublePendulumEnv::decode(const std::vector<double>& a) const {
     return act;
 }
 
-Observation DoublePendulumEnv::encode() const {
-    const State& s = pendulum_.state();
+Observation DoublePendulumEnv::encodeState(const State& s) const {
     return Observation{
         std::sin(s.theta1), std::cos(s.theta1),
         std::sin(s.theta2), std::cos(s.theta2),
         s.omega1 / kOmegaObsScale, s.omega2 / kOmegaObsScale
     };
+}
+
+Observation DoublePendulumEnv::encode() const {
+    return encodeState(pendulum_.state());
 }
 
 double DoublePendulumEnv::uprightScore(const State& s) const noexcept {

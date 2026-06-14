@@ -32,9 +32,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-option(BUILD_RENDERER   "Build the SDL2+ImGui visualizer" OFF)
+option(BUILD_RENDERER   "Build the legacy SDL2+ImGui visualizer" OFF)
+option(BUILD_SIMULATOR  "Build the raylib real-time simulator"   OFF)
 option(BUILD_TESTS      "Build the test suite"            ON)
-option(DP_WITH_LIBTORCH "Reserved: LibTorch PPO backend"  OFF)
+option(DP_WITH_LIBTORCH "GPU LibTorch training backend"   OFF)
 
 # ---- Warnings (cross-compiler) ----------------------------------------------
 add_library(dp_warnings INTERFACE)
@@ -49,6 +50,8 @@ endif()
 add_library(dp_core STATIC
     src/core/Config.cpp
     src/core/Trainer.cpp
+    src/core/SimWorld.cpp
+    src/core/Recorder.cpp
     src/physics/DoublePendulum.cpp
     src/rl/DoublePendulumEnv.cpp
     src/rl/NeuralNet.cpp
@@ -97,7 +100,22 @@ if(BUILD_TESTS)
     add_test(NAME dp_tests COMMAND dp_tests)
 endif()
 
-# ---- Optional renderer (SDL2 + Dear ImGui) ----------------------------------
+# ---- Real-time simulator (raylib) -------------------------------------------
+if(BUILD_SIMULATOR)
+    include(FetchContent)
+    # raylib is a small, dependency-light C library -> fetched & built from source
+    # so a fresh clone needs no system packages. Build only the library.
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(raylib
+        GIT_REPOSITORY https://github.com/raysan5/raylib.git
+        GIT_TAG        5.5)
+    FetchContent_MakeAvailable(raylib)
+
+    add_executable(dp_simulator src/app/simulator_main.cpp)
+    target_link_libraries(dp_simulator PRIVATE dp_core raylib)
+endif()
+
+# ---- Optional legacy renderer (SDL2 + Dear ImGui) ---------------------------
 if(BUILD_RENDERER)
     find_package(SDL2 REQUIRED)
 
