@@ -103,7 +103,7 @@ public:
 private:
     // Decode the actor's raw 2*actDim output into the policy mean and per-state
     // log_std. The std channels are passed through a tanh map that smoothly
-    // bounds log_std to [minLogStd, kLogStdMax] WITH gradients (the SAC trick),
+    // bounds log_std to [minLogStd, maxLogStd] WITH gradients (the SAC trick),
     // so the network can make exploration state-dependent -- large during
     // recovery, small near balance -- without ever collapsing or exploding.
     // `dStdRaw` (optional) receives d(log_std)/d(raw) for backprop.
@@ -146,6 +146,12 @@ private:
     // Average the accumulated reduction into the reported UpdateStats.
     UpdateStats finalizeStats(const SampleAccum& total) const;
 
+    // Refresh retStd_ from the rollout's GAE return targets (EMA-smoothed). Used
+    // to scale the value-clip band and the value-loss so the critic's per-update
+    // movement is bounded to a fraction of the actual return scale -- this is the
+    // structural cure for the value-loss explosion that wrecks the advantages.
+    void updateReturnStd(const RolloutBuffer& buffer);
+
     // True if the minibatch's mean approximate-KL exceeds 1.5x the target.
     bool klExceeded(const SampleAccum& acc) const {
         return cfg_.targetKL > 0.0 && acc.count > 0 &&
@@ -161,6 +167,11 @@ private:
     int adamStep_ = 0;
     double progress_ = 0.0;     // 0..1 training progress for LR annealing
     double entropyCoef_ = 0.0;  // live entropy weight (adapted when enabled)
+    // Running std of the GAE return targets. Scales the value-clip band and the
+    // value-loss so they stay meaningful regardless of the reward magnitude.
+    // Starts at 1 and snaps to the first rollout's return std (see updateReturnStd).
+    double retStd_ = 1.0;
+    bool   retStdInit_ = false;
 
     // ---- Data-parallel update machinery -------------------------------------
     int numWorkers_ = 1;                       // resolved core budget (>=1)

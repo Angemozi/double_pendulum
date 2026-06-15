@@ -1,0 +1,88 @@
+# =============================================================================
+# The Indestructible Monk -- STABILIZED restart.
+# Continues the disturbance curriculum that collapsed at magnitude 5.5 (std
+# pinned at 2.718, vLoss exploding into the thousands, avgRet stuck ~ -1500).
+# Root cause was a diverging critic: a high LR overshot the large GAE return
+# targets, valueLoss exploded, the advantages turned to noise, and the policy
+# diffused to maximum sigma. This config pairs the new value-stabilization code
+# (return-scaled value clipping + a sigma ceiling) with a gentler optimizer.
+#
+#   vs. recovery.yaml:
+#     - lrActor 3e-4 -> 1.5e-4, lrCritic 1e-3 -> 5e-4   (don't outrun the critic)
+#     - clipValueLoss + normalizeReturns ON              (bound critic divergence)
+#     - maxLogStd 1.0 -> 0.0  (std ceiling exp(0)=1.0)   (no runaway exploration)
+#     - wBottom 0.5 -> 0.3                               (softer reward stacking)
+#     - disturbances ramp 0 -> 5.5 over 400 updates      (gentle re-introduction)
+#   Warm-starts from the last MASTERED stage (mag 5.0) before the collapse.
+# =============================================================================
+physics.integrator: RK4
+physics.maxTorque: 8.0
+
+env.actuator: Dual
+env.task: Stabilize
+env.maxEpisodeSteps: 2000
+
+# ---- Reward: dynamic torque + dynamic omega + settling bonus ----------------
+env.wUpright: 1.0
+env.wTorque: 0.2
+env.wTorqueFar: 0.05
+env.torqueShaping: 4.0
+env.wOmega: 0.1
+env.wOmegaFar: 0.005
+env.omegaShaping: 4.0
+env.omegaRefSpeed: 0
+env.stillnessSharpness: 0.0
+env.wSurvival: 0.0
+env.wSettled: 1.0
+env.wBottom: 0.3                # softer than 0.5: less reward stacking while the
+env.bottomShaping: 1.0          #   harsh disturbances ramp in (avoid over-penalty)
+env.staticAngleTol: 0.12
+env.staticVelTol: 0.40
+env.staticHoldSteps: 360
+
+# ---- Disturbances: target the magnitude that collapsed, but ramp gently ------
+env.domainRandomize: true
+env.drTimestepPct: 0.1
+env.disturbances: true
+env.disturbProb: 0.002          # 0.003 -> 0.002. The disturbProb sweep at mag 5.5
+                                #   showed the boundary is disturbProb ~= 1/staticHoldSteps:
+                                #   at 0.003 a kick lands every ~333 steps < the 360-step
+                                #   stillness hold, so the hold can NEVER complete (ret -267,
+                                #   jitter 2.4). At 0.002 (~500-step interval) the same
+                                #   controller is solidly positive (ret +599, jitter 1.0).
+                                #   So mag 5.5 was over-KICKED, not beyond the controller.
+env.disturbMagnitude: 5.5       # the goal; the curriculum scales 0 -> 5.5
+
+# ---- PPO (arch matches the warm-start) --------------------------------------
+ppo.hidden1: 64
+ppo.hidden2: 64
+ppo.minLogStd: -1.0
+ppo.maxLogStd: 0.0              # CEILING: std <= exp(0)=1.0. Kills the std=2.718
+                               #   runaway-exploration failure mode outright.
+ppo.targetEntropyPerDim: 0.3
+ppo.minEntropyCoef: 0.0005     # floor (was hardcoded 1e-4)
+ppo.maxEntropyCoef: 0.05       # ceiling (was hardcoded 0.1)
+ppo.entropyCoef: 0.005
+
+# ---- Value-function stabilization (the actual cure) -------------------------
+ppo.lrActor: 0.00015           # 3e-4 -> 1.5e-4: gentler policy steps
+ppo.lrCritic: 0.0005           # 1e-3 -> 5e-4: don't let the critic overshoot
+ppo.clipValueLoss: true        # PPO value clipping vs the collected V_old
+ppo.valueClipEps: 0.2          # clip band, auto-scaled by the running return std
+ppo.normalizeReturns: true     # scale the clip band + loss by return std
+ppo.targetKL: 0.02
+
+ppo.rolloutSteps: 4096
+ppo.numEnvs: 16
+
+# ---- Disturbance curriculum: ramp kick intensity 0 -> full ------------------
+curriculum.enabled: true
+curriculum.rampUpdates: 400    # was 200: a gentler ramp into mag 5.5
+curriculum.startEpisodeSteps: 1000
+curriculum.endEpisodeSteps: 2000
+curriculum.rampDisturbances: true
+
+train.seed: 11
+train.totalSteps: 12000000
+train.runName: monk_master                       # the value-stabilized master run
+train.initFrom: models/monk_v3_m5p0_best.ckpt   # last mastered stage pre-collapse

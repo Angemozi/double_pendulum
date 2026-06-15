@@ -150,10 +150,16 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "ppo.maxGradNorm") ppo.maxGradNorm = d();
         else if (key == "ppo.initLogStd")  ppo.initLogStd = d();
         else if (key == "ppo.minLogStd")   ppo.minLogStd = d();
+        else if (key == "ppo.maxLogStd")   ppo.maxLogStd = d();
         else if (key == "ppo.targetKL")    ppo.targetKL = d();
         else if (key == "ppo.annealLr")    ppo.annealLr = parseBool(val);
+        else if (key == "ppo.clipValueLoss")    ppo.clipValueLoss = parseBool(val);
+        else if (key == "ppo.valueClipEps")     ppo.valueClipEps = d();
+        else if (key == "ppo.normalizeReturns") ppo.normalizeReturns = parseBool(val);
         else if (key == "ppo.adaptiveEntropy") ppo.adaptiveEntropy = parseBool(val);
         else if (key == "ppo.targetEntropyPerDim") ppo.targetEntropyPerDim = d();
+        else if (key == "ppo.minEntropyCoef")  ppo.minEntropyCoef = d();
+        else if (key == "ppo.maxEntropyCoef")  ppo.maxEntropyCoef = d();
         else if (key == "ppo.epochs")      ppo.epochs = i();
         else if (key == "ppo.miniBatch")   ppo.miniBatch = i();
         else if (key == "ppo.rolloutSteps")ppo.rolloutSteps = i();
@@ -214,6 +220,12 @@ bool Config::saveToFile(const std::string& path) const {
     os << "env.staticHoldSteps: " << env.staticHoldSteps << '\n';
     os << "ppo.hidden1: " << ppo.hidden1 << "\nppo.hidden2: " << ppo.hidden2 << '\n';
     os << "ppo.minLogStd: " << ppo.minLogStd << '\n';
+    os << "ppo.maxLogStd: " << ppo.maxLogStd << '\n';
+    os << "ppo.clipValueLoss: " << (ppo.clipValueLoss ? "true" : "false") << '\n';
+    os << "ppo.valueClipEps: " << ppo.valueClipEps << '\n';
+    os << "ppo.normalizeReturns: " << (ppo.normalizeReturns ? "true" : "false") << '\n';
+    os << "ppo.minEntropyCoef: " << ppo.minEntropyCoef << '\n';
+    os << "ppo.maxEntropyCoef: " << ppo.maxEntropyCoef << '\n';
     return true;
 }
 

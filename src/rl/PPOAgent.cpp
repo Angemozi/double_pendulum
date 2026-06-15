@@ -23,10 +23,6 @@ constexpr double kBeta1 = 0.9;
 constexpr double kBeta2 = 0.999;
 constexpr double kEps   = 1e-8;
 constexpr double kLog2Pi = 1.8378770664093454836; // log(2*pi)
-// Upper bound of the per-state log_std (the lower bound is cfg.minLogStd). With
-// the defaults [minLogStd=-2, max=1] the tanh map's midpoint is -0.5, matching
-// the historical initial std and keeping the small-init output head well-placed.
-constexpr double kLogStdMax = 1.0;
 
 // Diagonal-Gaussian log-prob with per-dimension (state-dependent) log_std.
 double gaussLogProb(const Vec& mean, const Vec& logStd, const Vec& u, int n) {
@@ -48,7 +44,10 @@ double gaussEntropy(const Vec& logStd, int n) {
 
 void PPOAgent::decodePolicy(const Vec& raw, Vec& mean, Vec& logStd, Vec* dStdRaw) const {
     // raw = [ mean(0..actDim-1), rawLogStd(actDim..2actDim-1) ].
-    const double mn = cfg_.minLogStd, mx = kLogStdMax;
+    // The tanh map bounds log_std to [minLogStd, maxLogStd]. maxLogStd is the
+    // exploration CEILING: with it the policy can never diffuse past exp(maxLogStd),
+    // so a transiently-bad advantage signal can't blow sigma up to a huge value.
+    const double mn = cfg_.minLogStd, mx = cfg_.maxLogStd;
     mean.resize(actDim_);
     logStd.resize(actDim_);
     if (dStdRaw) dStdRaw->resize(actDim_);
@@ -181,14 +180,38 @@ void PPOAgent::accumulateSampleGrad(MLP& actorNet, MLP& criticNet,
     actorNet.backward(gradOut);
     acc.stdSum += sigmaMean / actDim_;
 
-    // ---- Critic / value regression ------------------------------------------
-    const double v = criticNet.forward(t.observation)[0];
-    const double vErr = v - t.ret;                 // d(0.5*err^2)/dv = err
+    // ---- Critic / value regression (with return-scaled value clipping) -------
+    // The runaway here is a positive feedback loop: a high LR makes the critic
+    // overshoot the (large, unbounded) GAE return target; because GAE bootstraps
+    // off the critic, the targets follow the overshoot, valueLoss explodes, and
+    // the resulting garbage advantages leave the policy with no gradient (so it
+    // diffuses to max sigma -- the observed std=2.718 collapse). PPO value
+    // clipping caps how far the critic may move from the value it had at
+    // collection time (t.value), which breaks the loop. The clip band and the
+    // reported loss are SCALED by the running return std so a band of ~0.2 is
+    // meaningful whether returns are O(1) or O(1000) (raw critic, GAE-consistent;
+    // no checkpoint reinterpretation, so warm-starts keep working).
+    const double sigma  = (cfg_.normalizeReturns ? retStd_ : 1.0);
+    const double invSig2 = 1.0 / (sigma * sigma);
+    const double v     = criticNet.forward(t.observation)[0];
+    const double vErrU = v - t.ret;                 // d(0.5*err^2)/dv = err
+    double vErr = vErrU;
+    if (cfg_.clipValueLoss) {
+        const double band     = cfg_.valueClipEps * sigma;
+        const double vClipped = t.value + math::clamp(v - t.value, -band, band);
+        const double vErrC    = vClipped - t.ret;
+        // Value loss = max(unclipped^2, clipped^2). The gradient is the unclipped
+        // error UNLESS the clipped term dominates while v has already moved beyond
+        // the band -- there vClipped is constant in v, so the gradient is 0 and the
+        // critic is held back. That zero-gradient region is what bounds divergence.
+        if (vErrC * vErrC > vErrU * vErrU && std::abs(v - t.value) >= band)
+            vErr = 0.0;
+    }
     criticNet.backward(Vec{ vErr * invBatch });
 
     // ---- Diagnostics ---------------------------------------------------------
     acc.policyLoss += -std::min(unclipped, clipped);
-    acc.valueLoss  += 0.5 * vErr * vErr;
+    acc.valueLoss  += 0.5 * vErrU * vErrU * invSig2; // normalized -> readable scale
     acc.entropy    += gaussEntropy(logStd, actDim_);
     acc.approxKL   += (t.logProb - logpNew);
     acc.clipFrac   += wasClipped ? 1.0 : 0.0;
@@ -225,6 +248,9 @@ UpdateStats PPOAgent::finalizeStats(const SampleAccum& total) const {
 
 UpdateStats PPOAgent::update(RolloutBuffer& buffer) {
     if (buffer.size() == 0) return UpdateStats{};
+    // Refresh the return-scale BEFORE the epochs (read by every value-clip below,
+    // including the parallel workers -- it is not mutated inside the update region).
+    if (cfg_.normalizeReturns) updateReturnStd(buffer);
     buffer.normalizeAdvantages();
     UpdateStats st = (numWorkers_ > 1) ? updateParallel(buffer) : updateSerial(buffer);
 
@@ -237,10 +263,30 @@ UpdateStats PPOAgent::update(RolloutBuffer& buffer) {
         const double target = cfg_.targetEntropyPerDim * actDim_;
         const double err = target - st.entropy;        // >0 => too little entropy
         entropyCoef_ *= std::exp(0.05 * err);
-        entropyCoef_ = math::clamp(entropyCoef_, 1e-4, 0.1);
+        entropyCoef_ = math::clamp(entropyCoef_, cfg_.minEntropyCoef, cfg_.maxEntropyCoef);
     }
     st.entropyCoef = entropyCoef_;
     return st;
+}
+
+// EMA-smoothed std of this rollout's GAE return targets. The first rollout snaps
+// the estimate (so a warm-started run with large raw returns gets a correctly
+// scaled value-clip band immediately rather than spending warmup at unit scale).
+void PPOAgent::updateReturnStd(const RolloutBuffer& buffer) {
+    const std::size_t n = buffer.size();
+    if (n == 0) return;
+    double mean = 0.0;
+    for (std::size_t i = 0; i < n; ++i) mean += buffer[i].ret;
+    mean /= static_cast<double>(n);
+    double var = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double dd = buffer[i].ret - mean;
+        var += dd * dd;
+    }
+    var /= static_cast<double>(n);
+    const double s = std::max(std::sqrt(var), 1e-6); // guard against a degenerate 0
+    retStd_ = retStdInit_ ? (0.95 * retStd_ + 0.05 * s) : s;
+    retStdInit_ = true;
 }
 
 UpdateStats PPOAgent::updateSerial(RolloutBuffer& buffer) {

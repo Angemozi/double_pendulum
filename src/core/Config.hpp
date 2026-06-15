@@ -123,7 +123,22 @@ struct PpoConfig {
     double initLogStd  = -0.5;           // initial log std of the Gaussian policy
     // --- stability / exploration controls (see PPOAgent) --------------------
     double minLogStd   = -2.0;           // floor on log std => sigma >= exp(min)
+    double maxLogStd   = 1.0;            // CEILING on log std => sigma <= exp(max).
+                                         // Caps exploration so a diverging-critic
+                                         // update can't diffuse the policy to a huge
+                                         // sigma (the observed std=2.718 collapse).
     double targetKL    = 0.02;           // KL early-stop threshold (0 disables)
+    // --- value-function stabilization (the cure for critic divergence) -------
+    // The critic regression target (GAE return) is unbounded and large-magnitude;
+    // a high LR makes the critic overshoot, the bootstrapped targets follow, and
+    // valueLoss explodes -- which destroys the advantage signal and leaves the
+    // policy with no usable gradient (it then diffuses to max sigma). These bound
+    // the critic's per-update movement to a fraction of the running return scale.
+    bool   clipValueLoss   = true;       // PPO value clipping (vs the collected V_old)
+    double valueClipEps    = 0.2;        // clip band, SCALED by the running return std
+    bool   normalizeReturns= true;       // scale the value clip band + loss by ret std
+    // Adaptive-entropy controller clamp bounds (was hardcoded 1e-4 .. 0.1). The
+    // floor stops the coef vanishing; the ceiling stops it over-inflating entropy.
     bool   annealLr    = true;           // linearly decay LR over training
     // Adaptive entropy: instead of a fixed entropyCoef, automatically raise/lower
     // it to hold the policy's entropy near targetEntropyPerDim * actionDim. This
@@ -131,6 +146,8 @@ struct PpoConfig {
     // entropy falls too far, directly counteracting the 1/sigma^2 overconfidence.
     bool   adaptiveEntropy   = true;
     double targetEntropyPerDim = 0.4;    // ~ std 0.37/dim; tune for exploration
+    double minEntropyCoef    = 1e-4;     // floor for the adaptive entropy coef
+    double maxEntropyCoef    = 0.1;      // ceiling for the adaptive entropy coef
     int    epochs      = 10;             // optimization epochs per rollout
     int    miniBatch   = 64;             // minibatch size
     int    rolloutSteps= 2048;           // environment steps per policy update
