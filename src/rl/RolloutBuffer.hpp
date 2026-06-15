@@ -29,6 +29,10 @@ struct Transition {
     double value   = 0.0; // V_old(s)
     double reward  = 0.0;
     bool   done    = false; // terminal OR truncated boundary (bootstrap cut)
+
+    bool   truncated = false; // time limit cut
+    double nextVaule = 0.0; // V(s_{t+1}) of the SAME episode, used at a truncation   
+
     // Filled in by computeGAE():
     double advantage = 0.0;
     double ret       = 0.0; // return target = advantage + value
