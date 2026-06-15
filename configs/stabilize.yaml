@@ -7,11 +7,13 @@ env.actuator: Dual
 env.task: Stabilize
 env.maxEpisodeSteps: 2000
 env.wUpright: 1.0
-env.wTorque: 0.05            # 5x harsher motor penalty (was 0.01) -> no free jitter
-env.wOmega: 0.02            # 4x stronger velocity penalty (was 0.005)
-env.wSurvival: 0.0          # removed the unconditional alive bonus the jitter farmed
-env.stillnessSharpness: 0.6 # upright reward *= exp(-0.6*||omega||^2): still-only credit
-env.omegaRefSpeed: 8.0
+env.wTorque: 0.2            # was 0.05: aggressive motor action is now expensive
+env.wOmega: 0.1            # was 0.02: STRONG penalty on (w1^2 + w2^2)
+env.wSurvival: 0.0          # no unconditional alive bonus to farm
+env.stillnessSharpness: 0.0 # gate REMOVED -> replaced by the direct quadratic below
+env.omegaRefSpeed: 0        # 0 => the omega penalty is the RAW, UNBOUNDED quadratic
+                            #   -wOmega*(w1^2+w2^2): high-speed spinning -> deep negative
+                            #   (a strictly-negative spin reward, not just neutral)
 env.domainRandomize: true
 # Disturbances OFF for the "stand perfectly still" goal: random kicks force
 # recovery motion that breaks stillness and the success streak. Train robustness
@@ -27,9 +29,12 @@ env.staticHoldSteps: 480
 
 ppo.hidden1: 64
 ppo.hidden2: 64
-ppo.entropyCoef: 0.003
+ppo.entropyCoef: 0.01        # was 0.003: stronger exploration pressure
+ppo.minLogStd: -1.0          # was -2.0: initial std ~1.0 AND a 0.37 floor, so the
+                             #   policy can't collapse onto the spinning local minimum
+ppo.targetEntropyPerDim: 0.8 # was 0.4: hold entropy high, resist premature collapse
 ppo.rolloutSteps: 2048
 
 train.seed: 42
-train.totalSteps: 30000000
+train.totalSteps: 300000000
 train.runName: ppo_stabilize
