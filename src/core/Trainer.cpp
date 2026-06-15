@@ -99,6 +99,8 @@ void Trainer::collectVectorized() {
             tr.value       = po.value;
             tr.reward      = sr.reward;
             tr.done        = sr.terminal;
+            tr.truncated   = sr.truncated && !sr.terminal;
+            if (tr.truncated) tr.nextValue = agent_.value(sr.observation);
             vecBuffers_[ei].add(std::move(tr));
 
             vecReturns_[ei] += sr.reward;
@@ -204,10 +206,12 @@ rl::UpdateStats Trainer::collectAndUpdate() {
         tr.logProb     = po.logProb;
         tr.value       = po.value;
         tr.reward      = sr.reward;
-        // A transition is "done" for bootstrapping if the episode ended for ANY
-        // reason at this step; we still bootstrap truncation via the next value
-        // below, but a true terminal cuts the value to zero.
+        // Distinguish a true TERMINAL (failure -> bootstrap value 0) from a
+        // time-limit TRUNCATION (the episode was still viable -> bootstrap from
+        // the real next-state value so GAE isn't biased by the artificial cut).
         tr.done        = sr.terminal;
+        tr.truncated   = sr.truncated && !sr.terminal;
+        if (tr.truncated) tr.nextValue = agent_.value(sr.observation);
         buffer_.add(std::move(tr));
 
         episodeReturn_ += sr.reward;

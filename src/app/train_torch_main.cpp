@@ -180,6 +180,13 @@ int main(int argc, char** argv) {
             tr.value = val.item<double>();
             tr.reward = sr.reward;
             tr.done = sr.terminal;
+            tr.truncated = sr.truncated && !sr.terminal;
+            if (tr.truncated) {
+                // Bootstrap a time-limit cut from the real next-state value.
+                auto nObs = torch::from_blob(sr.observation.data(), {1, obsDim}, torch::kDouble)
+                                .to(torch::kFloat).to(device);
+                tr.nextValue = net->value(nObs).item<double>();
+            }
             buffer.add(std::move(tr));
 
             obs = sr.observation;

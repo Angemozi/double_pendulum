@@ -78,10 +78,14 @@ public:
                 vNext = nextValue;      // mid-episode: chain normally
                 advCarry = nextAdv;
             }
-            
-            const double mask = t.done ? 0.0 : 1.0; // zero the bootstrap at episode ends
-            const double delta = t.reward + gamma * nextValue * mask - t.value;
-            t.advantage = delta + gamma * lambda * mask * nextAdv;
+
+            // vNext / advCarry already encode the episode boundary, so no extra
+            // mask is needed: a true terminal contributes V=0 and breaks the
+            // advantage chain, while a time-limit truncation bootstraps from the
+            // real next-state value but still breaks the chain (the next episode
+            // must not leak advantage backward across the cut).
+            const double delta = t.reward + gamma * vNext - t.value;
+            t.advantage = delta + gamma * lambda * advCarry;
             t.ret       = t.advantage + t.value;
             nextValue = t.value;
             nextAdv   = t.advantage;
