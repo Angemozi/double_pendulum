@@ -35,6 +35,8 @@ same way; the config loader already speaks a YAML subset.)
 DoublePendulumRL/
 ├── CMakeLists.txt
 ├── README.md
+├── LICENSE.md
+├── .gitignore
 ├── configs/            # YAML-subset experiment configs
 │   ├── default.yaml
 │   ├── swingup.yaml
