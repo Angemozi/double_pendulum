@@ -60,7 +60,7 @@ double throughput(IntegratorType integ, long long steps) {
     }
     // Consume `sink` in a way the optimizer cannot prove is dead.
     if (sink == 1234567.89) DP_LOG_INFO("unreachable %.1f", sink);
-    return steps / w.seconds();
+    return static_cast<double>(steps) / w.seconds();
 }
 } // namespace
 
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
             StepResult sr = env.step(a);
             if (sr.terminal || sr.truncated) env.reset(123 + i);
         }
-        DP_LOG_INFO("Environment throughput: %.0f steps/sec", n / w.seconds());
+        DP_LOG_INFO("Environment throughput: %.0f steps/sec", static_cast<double>(n) / w.seconds());
     }
     return 0;
 }

@@ -99,6 +99,12 @@ void Trainer::collectVectorized() {
             tr.value       = po.value;
             tr.reward      = sr.reward;
             tr.done        = sr.terminal;
+            // Time-limit cut (not a true terminal): record so GAE bootstraps from
+            // the real next state instead of leaking into the next episode.
+            // sr.observation is still this episode's post-step state (the per-env
+            // reset below has not happened yet).
+            tr.truncated   = sr.truncated && !sr.terminal;
+            if (tr.truncated) tr.nextValue = agent_.value(sr.observation);
             vecBuffers_[ei].add(std::move(tr));
 
             vecReturns_[ei] += sr.reward;
@@ -204,10 +210,14 @@ rl::UpdateStats Trainer::collectAndUpdate() {
         tr.logProb     = po.logProb;
         tr.value       = po.value;
         tr.reward      = sr.reward;
-        // A transition is "done" for bootstrapping if the episode ended for ANY
-        // reason at this step; we still bootstrap truncation via the next value
-        // below, but a true terminal cuts the value to zero.
+        // A true terminal (failure) cuts the bootstrap to zero; a time-limit
+        // truncation instead bootstraps from the real next state so the value
+        // target stays correct and advantage does not leak across the episode
+        // boundary. sr.observation is still this episode's post-step state (the
+        // env reset below has not happened yet).
         tr.done        = sr.terminal;
+        tr.truncated   = sr.truncated && !sr.terminal;
+        if (tr.truncated) tr.nextValue = agent_.value(sr.observation);
         buffer_.add(std::move(tr));
 
         episodeReturn_ += sr.reward;
@@ -296,7 +306,7 @@ double Trainer::runHeadless() {
     agent_.save(path);
     DP_LOG_INFO("Trainer: done. %lld steps in %.1fs (%.0f steps/s). final avgRet100=%.2f",
                 globalStep_, wall.seconds(),
-                globalStep_ / std::max(1e-9, wall.seconds()), avgReturn());
+                static_cast<double>(globalStep_) / std::max(1e-9, wall.seconds()), avgReturn());
     return avgReturn();
 }
 

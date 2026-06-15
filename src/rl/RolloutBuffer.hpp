@@ -28,7 +28,15 @@ struct Transition {
     double logProb = 0.0; // log pi_old(a|s) at collection time
     double value   = 0.0; // V_old(s)
     double reward  = 0.0;
-    bool   done    = false; // terminal OR truncated boundary (bootstrap cut)
+    bool   done    = false; // TRUE terminal (failure/success): bootstrap cut to 0
+    // --- episode-boundary handling for GAE ----------------------------------
+    // A time-limit truncation is NOT a true terminal: the episode would have
+    // continued, so the value must be bootstrapped from the real next state
+    // rather than cut to zero. We record the boundary and the next-state value so
+    // computeGAE() can bootstrap correctly AND avoid leaking advantage across the
+    // episode boundary into the next (unrelated) episode in the same buffer.
+    bool   truncated = false; // time-limit cut: bootstrap from nextValue, no carry
+    double nextValue = 0.0;   // V(s_{t+1}) of the SAME episode, used at a truncation
     // Filled in by computeGAE():
     double advantage = 0.0;
     double ret       = 0.0; // return target = advantage + value
@@ -55,14 +63,31 @@ public:
     // bootstrap when the rollout was cut mid-episode (not terminal).
     void computeGAE(double gamma, double lambda, double lastValue) {
         const std::size_t n = data_.size();
-        double nextValue = lastValue;
-        double nextAdv   = 0.0;
+        double nextValue = lastValue;  // V(s_{t+1}) for a mid-episode step
+        double nextAdv   = 0.0;        // A_{t+1}   for a mid-episode step
         for (std::size_t idx = n; idx-- > 0;) {
             Transition& t = data_[idx];
-            const double mask = t.done ? 0.0 : 1.0; // zero the bootstrap at episode ends
-            const double delta = t.reward + gamma * nextValue * mask - t.value;
-            t.advantage = delta + gamma * lambda * mask * nextAdv;
+
+            // Pick the bootstrap value and the advantage carry for THIS step,
+            // resetting both at episode boundaries so advantage never leaks across
+            // episodes (the old single-mask recursion leaked at truncations, where
+            // it bootstrapped from the NEXT episode's first state).
+            double vNext, advCarry;
+            if (t.done) {
+                vNext = 0.0;          // true terminal: no future value
+                advCarry = 0.0;       // chain resets
+            } else if (t.truncated) {
+                vNext = t.nextValue;  // time-limit cut: bootstrap from the real next state
+                advCarry = 0.0;       // but the next episode's advantage must NOT flow back
+            } else {
+                vNext = nextValue;    // mid-episode: chain normally
+                advCarry = nextAdv;
+            }
+
+            const double delta = t.reward + gamma * vNext - t.value;
+            t.advantage = delta + gamma * lambda * advCarry;
             t.ret       = t.advantage + t.value;
+
             nextValue = t.value;
             nextAdv   = t.advantage;
         }

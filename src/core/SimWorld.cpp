@@ -117,7 +117,7 @@ SimFrame SimWorld::buildFrame(const Action& torque, const StepResult& sr,
         f.sigma     = po->sigma;
         double sum = 0.0;
         for (double s : po->sigma) sum += s;
-        f.meanSigma = po->sigma.empty() ? 0.0 : sum / po->sigma.size();
+        f.meanSigma = po->sigma.empty() ? 0.0 : sum / static_cast<double>(po->sigma.size());
         f.entropy   = entropyFromSigma(po->sigma);
     }
     return f;
@@ -157,7 +157,7 @@ SimWorld::Probe SimWorld::probe(const State& s) {
     const Action a = env_.decode(po.squashed);
     double sum = 0.0;
     for (double sg : po.sigma) sum += sg;
-    const double meanSigma = po.sigma.empty() ? 0.0 : sum / po.sigma.size();
+    const double meanSigma = po.sigma.empty() ? 0.0 : sum / static_cast<double>(po.sigma.size());
     return Probe{a.torque1, a.torque2, po.value, meanSigma};
 }
 

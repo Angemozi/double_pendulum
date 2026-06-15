@@ -159,6 +159,19 @@ static void testGAE() {
     rl::Transition b; b.reward = 1.0; b.value = 0.0; b.done = false; buf2.add(b);
     buf2.computeGAE(0.9, 1.0, 5.0);
     checkNear(buf2[0].ret, 1.0, 1e-9, "terminal cuts bootstrap");
+
+    // A time-limit truncation must bootstrap from the stored next-state value and
+    // must NOT leak advantage from the following (unrelated) episode.
+    rl::RolloutBuffer buf3;
+    rl::Transition x; x.reward = 1.0; x.value = 0.0;
+    x.truncated = true; x.nextValue = 10.0;          // time-limit cut, V(s') = 10
+    buf3.add(x);
+    rl::Transition y; y.reward = 1.0; y.value = 0.0;  // first step of next episode
+    buf3.add(y);
+    buf3.computeGAE(0.9, 1.0, 0.0);
+    // return_0 = r + gamma*nextValue = 1 + 0.9*10 = 10, with NO contribution from
+    // the next episode's step.
+    checkNear(buf3[0].ret, 1.0 + 0.9 * 10.0, 1e-9, "truncation bootstraps from nextValue (no leak)");
 }
 
 // ---- 7. Neural net determinism + backprop sanity ---------------------------

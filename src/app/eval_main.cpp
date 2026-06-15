@@ -89,7 +89,8 @@ int main(int argc, char** argv) {
     DP_LOG_INFO("eval: mean return over %d episodes = %.2f", episodes, sumReturn / episodes);
     if (nUpright > 0 && nRecover > 0)
         DP_LOG_INFO("eval: state-dependent sigma -> balanced=%.3f  recovery=%.3f  (recovery should be larger)",
-                    sigmaUpright / nUpright, sigmaRecover / nRecover);
+                    sigmaUpright / static_cast<double>(nUpright),
+                    sigmaRecover / static_cast<double>(nRecover));
     if (csv.is_open()) DP_LOG_INFO("eval: wrote replay CSV '%s'", csvPath);
     return 0;
 }
