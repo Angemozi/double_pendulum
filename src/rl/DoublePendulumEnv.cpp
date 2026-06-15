@@ -211,6 +211,13 @@ double DoublePendulumEnv::computeReward(const Action& a) const noexcept {
         if (settled) r += e.wSettled;
     }
 
+    // Anti-slack bottom penalty: -wBottom*(1-upright)^shaping. It is 0 at the top
+    // (upright==1) so it never disturbs the static pose, but it makes hanging at
+    // the bottom cost reward -- the agent must swing up to escape the penalty zone
+    // rather than farm a neutral reward by doing nothing.
+    if (e.wBottom > 0.0)
+        r -= e.wBottom * std::pow(1.0 - upright, e.bottomShaping);
+
     // Energy-aware shaping: drive total mechanical energy toward E_top, the
     // energy of the (motionless) upright configuration. Normalized by |E_top| so
     // the term is scale-free. Helps the swing-up task pump energy efficiently.

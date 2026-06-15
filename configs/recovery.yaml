@@ -25,6 +25,9 @@ env.stillnessSharpness: 0.0
 env.wSurvival: 0.0
 env.wSettled: 1.0               # STRONG dense bonus in the static pose -> the still
                                  #   state clearly dominates any near-upright jitter
+env.wBottom: 0.5                # anti-slack: -0.5*(1-upright) penalty for hanging, 0 at
+env.bottomShaping: 1.0          #   the top. LINEAR verified best here; quadratic (2.0)
+                                 #   destabilized recovery training (near-top gradient -> 0)
 env.staticAngleTol: 0.12
 env.staticVelTol: 0.40
 env.staticHoldSteps: 360

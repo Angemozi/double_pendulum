@@ -10,6 +10,8 @@ env.wUpright: 1.0
 env.wTorque: 0.2            # harsh torque weight NEAR the top (monk stillness)
 env.wTorqueFar: 0.02       # dynamic torque: cheap far from upright so a knocked-down
 env.torqueShaping: 4.0     #   monk can still afford the swing-up (no "penalty paralysis")
+env.wBottom: 0.5           # anti-slack: -0.5*(1-upright) penalty for hanging (0 at top)
+env.bottomShaping: 1.0     #   linear: constant push up; forces swing-up off the bottom
 env.wOmega: 0.1            # was 0.02: STRONG penalty on (w1^2 + w2^2)
 env.wSurvival: 0.0          # no unconditional alive bonus to farm
 env.stillnessSharpness: 0.0 # gate REMOVED -> replaced by the direct quadratic below

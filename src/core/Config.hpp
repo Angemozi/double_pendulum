@@ -68,6 +68,13 @@ struct EnvConfig {
     // static tolerances (see static* below). Maximizing settled steps == fastest
     // possible time-to-recover after a disturbance. 0 disables.
     double wSettled      = 0.0;
+    // Anti-slack BOTTOM penalty: - wBottom * (1 - upright)^bottomShaping. Maximal
+    // (-wBottom) when fully hanging, exactly 0 at the top -- so it never touches
+    // the static pose but makes "hanging around" cost reward, forcing swing-up.
+    // bottomShaping 1 = linear (constant push up); 2 = quadratic (bites mainly at
+    // the very bottom). 0 disables.
+    double wBottom       = 0.0;
+    double bottomShaping = 1.0;
     // Energy-aware shaping: penalize |E - E_top| (energy of the upright rest
     // configuration). Classic swing-up aid -- rewards pumping the system to the
     // energy level required to reach the top. 0 disables.

@@ -120,6 +120,8 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "env.wOmegaFar")     env.wOmegaFar = d();
         else if (key == "env.omegaShaping")  env.omegaShaping = d();
         else if (key == "env.wSettled")      env.wSettled = d();
+        else if (key == "env.wBottom")       env.wBottom = d();
+        else if (key == "env.bottomShaping") env.bottomShaping = d();
         else if (key == "env.stillnessSharpness") env.stillnessSharpness = d();
         else if (key == "env.staticAngleTol")  env.staticAngleTol = d();
         else if (key == "env.staticVelTol")    env.staticVelTol = d();
@@ -205,6 +207,8 @@ bool Config::saveToFile(const std::string& path) const {
     os << "env.wOmegaFar: " << env.wOmegaFar << '\n';
     os << "env.omegaShaping: " << env.omegaShaping << '\n';
     os << "env.wSettled: " << env.wSettled << '\n';
+    os << "env.wBottom: " << env.wBottom << '\n';
+    os << "env.bottomShaping: " << env.bottomShaping << '\n';
     os << "env.staticAngleTol: " << env.staticAngleTol << '\n';
     os << "env.staticVelTol: " << env.staticVelTol << '\n';
     os << "env.staticHoldSteps: " << env.staticHoldSteps << '\n';
