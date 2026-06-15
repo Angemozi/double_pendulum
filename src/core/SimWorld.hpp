@@ -82,6 +82,13 @@ public:
     void setStochastic(bool s) noexcept { stochastic_ = s; }
     bool stochastic() const noexcept { return stochastic_; }
 
+    // Auto-reset: when true (default), the world starts a fresh episode on
+    // terminal/time-limit so the sandbox runs continuously. Turn it OFF to let a
+    // single episode run forever (e.g. to watch the policy hold a static pose
+    // past the maxEpisodeSteps limit); use reset() to restart manually.
+    void setAutoReset(bool v) noexcept { autoReset_ = v; }
+    bool autoReset() const noexcept { return autoReset_; }
+
     const SimFrame& last() const noexcept { return last_; }
     const Config&   config() const noexcept { return cfg_; }
     DoublePendulumEnv& env() noexcept { return env_; }
@@ -114,6 +121,7 @@ private:
     std::unique_ptr<rl::PPOAgent> agent_;
     bool               hasPolicy_  = false;
     bool               stochastic_ = false;
+    bool               autoReset_  = true;   // restart episodes automatically
     std::string        policyName_;
     std::string        policyPath_;                     // for hot-reload watching
     std::filesystem::file_time_type policyMtime_{};     // last seen modification time

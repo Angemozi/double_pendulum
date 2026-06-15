@@ -122,8 +122,10 @@ SimFrame SimWorld::step(const Action& manualTorque) {
     }
 
     // Auto-restart a fresh episode on terminal/time-limit so the sandbox keeps
-    // running continuously (the UI can still trigger manual resets).
-    if (sr.terminal || sr.truncated) {
+    // running continuously. When auto-reset is OFF, the same episode runs forever
+    // (physics keeps integrating past the time limit), so the still streak keeps
+    // climbing -- ideal for watching the policy hold a static pose indefinitely.
+    if (autoReset_ && (sr.terminal || sr.truncated)) {
         stillStreak_ = 0;        // new episode: restart streak (flag stays latched)
         obs_ = env_.reset();
         episodeReturn_ = 0.0;

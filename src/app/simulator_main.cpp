@@ -218,6 +218,7 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_RIGHT_BRACKET)) speed = std::min(64.0, speed * 1.5);
         if (IsKeyPressed(KEY_LEFT_BRACKET))  speed = std::max(0.05, speed / 1.5);
         if (IsKeyPressed(KEY_F)) followLatest = !followLatest;
+        if (IsKeyPressed(KEY_A)) world.setAutoReset(!world.autoReset());
         if (IsKeyPressed(KEY_H)) { heat = (heat + 1) % 4; heatTimer = 0.0; }
         if (IsKeyPressed(KEY_G)) { heatSlice = (heatSlice + 1) % 3; heatTimer = 0.0; }
 
@@ -385,7 +386,9 @@ int main(int argc, char** argv) {
                  playback==1?"best":playback==2?"failure":"recovery", playIdx, playRec.size()), VIOLET);
         line(TextFormat("policy: %s", world.hasPolicy() ? world.policyName().c_str() : "<none>"),
              world.hasPolicy() ? GREEN : ORANGE);
-        line(TextFormat("mode: %s", world.stochastic() ? "stochastic" : "deterministic"));
+        line(TextFormat("mode: %s%s", world.stochastic() ? "stochastic" : "deterministic",
+                        world.autoReset() ? "" : "   [AUTO-RESET OFF]"),
+             world.autoReset() ? RAYWHITE : ORANGE);
         line(TextFormat("episode step %d   return %.1f", f.episodeStep, f.episodeReturn));
         line(TextFormat("reward     %+.3f", f.reward));
         line(TextFormat("torque     %+.2f  %+.2f", f.torque.torque1, f.torque.torque2));
@@ -418,7 +421,7 @@ int main(int argc, char** argv) {
         DrawRectangle(cx - 10, 0, 262, 230, Fade(BLACK, 0.4f));
         auto ctl = [&](const char* t){ DrawText(t, cx, cy, 13, Fade(RAYWHITE, 0.8f)); cy += 15; };
         ctl("SPACE pause  R reset  . step");
-        ctl("T stochastic   F follow-latest");
+        ctl("T stochastic  A auto-reset  F follow");
         ctl("H heatmap  G slice  L playback");
         ctl("ARROWS impulse  D random kick");
         ctl("[ / ] slower / faster");
