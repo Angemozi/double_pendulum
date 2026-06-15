@@ -231,6 +231,38 @@ static void testRecorder() {
     std::remove(path.c_str());
 }
 
+// ---- 10. Static-equilibrium detector ---------------------------------------
+static void testEquilibriumDetector() {
+    std::printf("[equilibrium detector]\n");
+    Config cfg;
+    // With zero gravity the inverted pose (theta=pi) is a force-free equilibrium,
+    // so a policy-free world holds perfectly still there -- ideal for the test.
+    cfg.physics.g = 0.0;
+    cfg.physics.b1 = cfg.physics.b2 = 0.0;
+    cfg.env.staticHoldSteps = 20;
+    cfg.env.staticAngleTol  = 0.05;
+    cfg.env.staticVelTol    = 0.05;
+    SimWorld world(cfg);
+    world.reset();
+    world.env().physics().setState(State{math::kPi, math::kPi, 0.0, 0.0});
+
+    bool reached = false; int firstAt = -1;
+    for (int i = 0; i < 60; ++i) {
+        const SimFrame f = world.step();          // zero torque; stays upright (g=0)
+        if (f.atEquilibrium) { reached = true; if (firstAt < 0) firstAt = i; }
+    }
+    check(reached, "detector fires when held upright + still");
+    check(firstAt == 19, "equilibrium declared exactly after staticHoldSteps (20)");
+
+    // A spinning state must NOT count as equilibrium.
+    SimWorld world2(cfg);
+    world2.reset();
+    world2.env().physics().setState(State{math::kPi, math::kPi, 5.0, -5.0});
+    bool spun = false;
+    for (int i = 0; i < 60; ++i) if (world2.step().atEquilibrium) spun = true;
+    check(!spun, "fast spin never counts as static equilibrium");
+}
+
 int main() {
     std::printf("==== Double Pendulum RL test suite ====\n");
     testAngleMath();
@@ -242,6 +274,7 @@ int main() {
     testNeuralNet();
     testSimWorld();
     testRecorder();
+    testEquilibriumDetector();
     std::printf("---------------------------------------\n");
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

@@ -11,10 +11,13 @@
 // =============================================================================
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 #include <string>
 #include <fstream>
 
 #include "core/Config.hpp"
+#include "core/SimWorld.hpp"
 #include "rl/DoublePendulumEnv.hpp"
 #include "rl/PPOAgent.hpp"
 #include "util/Logger.hpp"
@@ -56,6 +59,7 @@ int main(int argc, char** argv) {
     double sumReturn = 0.0;
     double sigmaUpright = 0.0; long long nUpright = 0;   // mean sigma when balanced
     double sigmaRecover = 0.0; long long nRecover = 0;   // mean sigma when off-balance
+    double velUpright = 0.0, torqUpright = 0.0;          // jitter metrics when balanced
     for (int ep = 0; ep < episodes; ++ep) {
         Observation obs = env.reset(seed + ep);
         double ret = 0.0;
@@ -71,10 +75,15 @@ int main(int argc, char** argv) {
             double meanSigma = 0.0;
             for (double s : po.sigma) meanSigma += s;
             meanSigma /= static_cast<double>(po.sigma.size());
-            if (sr.uprightScore > 0.85) { sigmaUpright += meanSigma; ++nUpright; }
-            else                        { sigmaRecover += meanSigma; ++nRecover; }
+            const State& s = env.getState();
+            if (sr.uprightScore > 0.85) {
+                sigmaUpright += meanSigma; ++nUpright;
+                // Jitter metrics while balanced: a "monk" has near-zero velocity
+                // and torque; a limit-cycle exploiter has large values here.
+                velUpright  += std::abs(s.omega1) + std::abs(s.omega2);
+                torqUpright += std::abs(torque.torque1) + std::abs(torque.torque2);
+            } else { sigmaRecover += meanSigma; ++nRecover; }
             if (csv.is_open()) {
-                const State& s = env.getState();
                 csv << ep << ',' << step << ','
                     << s.theta1 << ',' << s.theta2 << ',' << s.omega1 << ',' << s.omega2 << ','
                     << torque.torque1 << ',' << torque.torque2 << ','
@@ -90,6 +99,26 @@ int main(int argc, char** argv) {
     if (nUpright > 0 && nRecover > 0)
         DP_LOG_INFO("eval: state-dependent sigma -> balanced=%.3f  recovery=%.3f  (recovery should be larger)",
                     sigmaUpright / nUpright, sigmaRecover / nRecover);
+    if (nUpright > 0)
+        DP_LOG_INFO("eval: JITTER while balanced -> mean |w1|+|w2|=%.3f rad/s, mean |tau|=%.3f  (lower = stiller)",
+                    velUpright / nUpright, torqUpright / nUpright);
     if (csv.is_open()) DP_LOG_INFO("eval: wrote replay CSV '%s'", csvPath);
+
+    // End-to-end static-equilibrium probe through the SAME SimWorld detector the
+    // simulator uses -- the one-time [SUCCESS] banner prints from here if the
+    // deterministic policy reaches sustained perfect stillness.
+    {
+        SimWorld world(cfg);
+        if (world.loadPolicy(model)) {
+            int firstEq = -1, maxStreak = 0;
+            for (int i = 0; i < 3000; ++i) {
+                const dp::SimFrame& f = world.step();
+                maxStreak = std::max(maxStreak, f.stillStreak);
+                if (f.atEquilibrium && firstEq < 0) firstEq = i;
+            }
+            DP_LOG_INFO("eval: equilibrium probe -> maxStreak=%d/%d, firstReachedStep=%d",
+                        maxStreak, cfg.env.staticHoldSteps, firstEq);
+        }
+    }
     return 0;
 }

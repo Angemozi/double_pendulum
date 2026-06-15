@@ -175,7 +175,15 @@ double DoublePendulumEnv::computeReward(const Action& a) const noexcept {
         ? std::tanh(omegaSq / sq(e.omegaRefSpeed))
         : omegaSq;
 
-    double r = e.wUpright * upright
+    // Stillness gate: credit "upright" ONLY when the links are also slow. Without
+    // this, the dense uprightScore (which sees angles only) can be farmed by a
+    // near-upright limit cycle -- the agent jitters violently yet scores high.
+    // exp(-k*||omega||^2) multiplies the upright reward toward 0 as motion grows,
+    // so "upright AND still" is the only way to earn full reward. k=0 disables it.
+    const double stillness = (e.stillnessSharpness > 0.0)
+        ? std::exp(-e.stillnessSharpness * omegaSq) : 1.0;
+
+    double r = e.wUpright * upright * stillness
              - e.wTorque  * torqueCost
              - e.wOmega   * omegaCost
              + e.wSurvival;

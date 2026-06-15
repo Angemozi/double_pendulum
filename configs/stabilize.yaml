@@ -7,13 +7,23 @@ env.actuator: Dual
 env.task: Stabilize
 env.maxEpisodeSteps: 2000
 env.wUpright: 1.0
-env.wTorque: 0.01
-env.wOmega: 0.005
-env.wSurvival: 0.1
+env.wTorque: 0.05            # 5x harsher motor penalty (was 0.01) -> no free jitter
+env.wOmega: 0.02            # 4x stronger velocity penalty (was 0.005)
+env.wSurvival: 0.0          # removed the unconditional alive bonus the jitter farmed
+env.stillnessSharpness: 0.6 # upright reward *= exp(-0.6*||omega||^2): still-only credit
+env.omegaRefSpeed: 8.0
 env.domainRandomize: true
-env.disturbances: true
+# Disturbances OFF for the "stand perfectly still" goal: random kicks force
+# recovery motion that breaks stillness and the success streak. Train robustness
+# to kicks with configs/recovery.yaml instead.
+env.disturbances: false
 env.disturbProb: 0.002
 env.disturbMagnitude: 2.0
+# One-time "perfect static equilibrium" success detector (dp_simulator). At the
+# 240 Hz sim rate, 480 steps = 2 s. Tighten tolerances for a stricter monk.
+env.staticAngleTol: 0.10
+env.staticVelTol: 0.30
+env.staticHoldSteps: 480
 
 ppo.hidden1: 64
 ppo.hidden2: 64
@@ -21,5 +31,5 @@ ppo.entropyCoef: 0.003
 ppo.rolloutSteps: 2048
 
 train.seed: 42
-train.totalSteps: 3000000
+train.totalSteps: 30000000
 train.runName: ppo_stabilize

@@ -129,7 +129,14 @@ int main(int argc, char** argv) {
     // windowless environment / CI verify the simulator's logic without a GPU.
     if (hasFlag(argc, argv, "--selftest")) {
         DP_LOG_INFO("dp_simulator selftest: policy=%s", world.hasPolicy() ? "yes" : "none");
-        for (int i = 0; i < 2000; ++i) (void)world.step();
+        int maxStreak = 0; double minVel = 1e9;
+        for (int i = 0; i < 4000; ++i) {
+            const SimFrame& sf = world.step();
+            maxStreak = std::max(maxStreak, sf.stillStreak);
+            minVel = std::min(minVel, std::abs(sf.state.omega1) + std::abs(sf.state.omega2));
+        }
+        DP_LOG_INFO("dp_simulator selftest: max stillStreak=%d (need %d), min |w1|+|w2|=%.3f",
+                    maxStreak, cfg.env.staticHoldSteps, minVel);
         const auto hmT = world.computeHeatmap(24, SimWorld::HeatmapKind::Torque);
         const auto hmV = world.computeHeatmap(24, SimWorld::HeatmapKind::Value);
         const auto hmS = world.computeHeatmap(24, SimWorld::HeatmapKind::Sigma);
@@ -387,7 +394,19 @@ int main(int argc, char** argv) {
         line(TextFormat("sigma      %.3f", f.meanSigma));
         line(TextFormat("upright    %.3f", f.uprightScore));
         line(TextFormat("energy     %+.3f", f.energy), Fade(RAYWHITE, 0.8f));
+        // Static-equilibrium ("monk mode") progress toward sustained stillness.
+        if (f.atEquilibrium) line("MONK MODE: PERFECTLY STILL", GREEN);
+        else line(TextFormat("stillness  %d/%d", f.stillStreak, cfg.env.staticHoldSteps),
+                  f.stillStreak > 0 ? YELLOW : Fade(RAYWHITE, 0.55f));
         if (recording) line("RECORDING", RED);
+
+        // Big banner the moment perfect static equilibrium is reached.
+        if (f.atEquilibrium) {
+            const char* msg = "PERFECT STATIC EQUILIBRIUM";
+            const int fw = MeasureText(msg, 30);
+            DrawRectangle(screenW / 2 - fw / 2 - 18, 58, fw + 36, 46, Fade(DARKGREEN, 0.75f));
+            DrawText(msg, screenW / 2 - fw / 2, 66, 30, RAYWHITE);
+        }
 
         const float gy = screenH - 96.0f;
         drawGraph(hReward,  14,  gy, 280, 80, GREEN,   "reward");

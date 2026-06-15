@@ -115,6 +115,10 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "env.wOmega")   env.wOmega   = d();
         else if (key == "env.wSurvival")env.wSurvival= d();
         else if (key == "env.wEnergy")  env.wEnergy  = d();
+        else if (key == "env.stillnessSharpness") env.stillnessSharpness = d();
+        else if (key == "env.staticAngleTol")  env.staticAngleTol = d();
+        else if (key == "env.staticVelTol")    env.staticVelTol = d();
+        else if (key == "env.staticHoldSteps") env.staticHoldSteps = i();
         else if (key == "env.uprightThreshold") env.uprightThreshold = d();
         else if (key == "env.omegaRefSpeed") env.omegaRefSpeed = d();
         else if (key == "env.domainRandomize") env.domainRandomize = parseBool(val);
@@ -189,6 +193,10 @@ bool Config::saveToFile(const std::string& path) const {
     os << "env.task: " << taskName(env.task) << '\n';
     os << "env.maxEpisodeSteps: " << env.maxEpisodeSteps << '\n';
     os << "env.omegaRefSpeed: " << env.omegaRefSpeed << '\n';
+    os << "env.stillnessSharpness: " << env.stillnessSharpness << '\n';
+    os << "env.staticAngleTol: " << env.staticAngleTol << '\n';
+    os << "env.staticVelTol: " << env.staticVelTol << '\n';
+    os << "env.staticHoldSteps: " << env.staticHoldSteps << '\n';
     os << "ppo.hidden1: " << ppo.hidden1 << "\nppo.hidden2: " << ppo.hidden2 << '\n';
     os << "ppo.minLogStd: " << ppo.minLogStd << '\n';
     return true;

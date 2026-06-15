@@ -61,6 +61,7 @@ bool SimWorld::reloadIfChanged() {
 void SimWorld::reset() {
     obs_ = env_.reset();
     episodeReturn_ = 0.0;
+    stillStreak_ = 0;            // restart the streak; the once-only flag persists
     last_ = SimFrame{};
     last_.state = env_.getState();
     last_.kinematics = env_.physics().kinematics();
@@ -90,9 +91,40 @@ SimFrame SimWorld::step(const Action& manualTorque) {
 
     last_ = buildFrame(torque, sr, poPtr);
 
+    // ---- One-time static-equilibrium ("monk mode") detection ----------------
+    // Upright is theta == pi in this codebase's convention, so we measure the
+    // wrapped distance of each link from pi, and require both links AND both
+    // angular velocities to stay within strict tolerances for staticHoldSteps
+    // consecutive steps before declaring perfect static equilibrium -- exactly
+    // once per SimWorld lifetime (the flag prevents log spam).
+    {
+        const State& es = last_.state;
+        const EnvConfig& e = cfg_.env;
+        const bool still =
+            std::abs(math::wrapAngle(es.theta1 - math::kPi)) < e.staticAngleTol &&
+            std::abs(math::wrapAngle(es.theta2 - math::kPi)) < e.staticAngleTol &&
+            std::abs(es.omega1) < e.staticVelTol &&
+            std::abs(es.omega2) < e.staticVelTol;
+        stillStreak_ = still ? stillStreak_ + 1 : 0;
+        last_.stillStreak   = stillStreak_;
+        last_.atEquilibrium = (stillStreak_ >= e.staticHoldSteps);
+        if (last_.atEquilibrium && !equilibriumLogged_) {
+            equilibriumLogged_ = true;
+            const double secs = stillStreak_ * cfg_.physics.dt;
+            DP_LOG_INFO(" ");
+            DP_LOG_INFO("  +=================================================+");
+            DP_LOG_INFO("  |  [SUCCESS] Perfect Static Equilibrium Achieved! |");
+            DP_LOG_INFO("  +=================================================+");
+            DP_LOG_INFO("   Held upright & still for %d steps (%.2fs). Like a monk.",
+                        stillStreak_, secs);
+            DP_LOG_INFO(" ");
+        }
+    }
+
     // Auto-restart a fresh episode on terminal/time-limit so the sandbox keeps
     // running continuously (the UI can still trigger manual resets).
     if (sr.terminal || sr.truncated) {
+        stillStreak_ = 0;        // new episode: restart streak (flag stays latched)
         obs_ = env_.reset();
         episodeReturn_ = 0.0;
     }

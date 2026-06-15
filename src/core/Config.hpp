@@ -55,6 +55,16 @@ struct EnvConfig {
     // configuration). Classic swing-up aid -- rewards pumping the system to the
     // energy level required to reach the top. 0 disables.
     double wEnergy    = 0.0;
+    // Stillness gate sharpness k: the upright reward is multiplied by
+    // exp(-k * (w1^2 + w2^2)), so a near-upright limit cycle earns almost nothing.
+    // 0 = off (legacy behavior); ~0.5 strongly favors a static "monk" pose.
+    double stillnessSharpness = 0.0;
+    // One-time static-equilibrium success detector (used by SimWorld during live
+    // play). Equilibrium = both links within staticAngleTol of UPRIGHT (theta=pi)
+    // AND both |omega| < staticVelTol, held for staticHoldSteps consecutive steps.
+    double staticAngleTol  = 0.10;       // rad from upright per link
+    double staticVelTol    = 0.30;       // rad/s per link
+    int    staticHoldSteps = 180;        // consecutive steps to declare success
     double uprightThreshold = 0.9;       // cos-based threshold counted as "balanced"
     // Reference angular speed for the SATURATING omega penalty. The raw
     // (omega1^2+omega2^2) term is unbounded and at high spin dwarfs the upright

@@ -46,6 +46,9 @@ struct SimFrame {
     int        episodeStep  = 0;
     bool       terminal     = false;
     bool       truncated    = false;
+    // Static-equilibrium ("monk mode") tracking.
+    int        stillStreak  = 0;      // consecutive steps within the strict tol
+    bool       atEquilibrium = false; // streak has reached staticHoldSteps
 };
 
 class SimWorld {
@@ -117,6 +120,10 @@ private:
     Observation        obs_;
     double             episodeReturn_ = 0.0;
     SimFrame           last_;
+    // One-time static-equilibrium detector state (persists across episodes for
+    // the lifetime of this SimWorld, so the success banner prints exactly once).
+    int                stillStreak_ = 0;
+    bool               equilibriumLogged_ = false;
 };
 
 } // namespace dp
