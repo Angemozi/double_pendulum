@@ -1,35 +1,61 @@
-# Recovery-focused training: start near upright with disturbances, learn a robust
-# controller that recovers from kicks. Uses vectorized envs, domain randomization,
-# and a disturbance curriculum that ramps the kick intensity over training.
+# =============================================================================
+# The Indestructible Monk -- robustness & recovery.
+# Warm-starts from the mastered "spinkill" static-equilibrium policy and trains
+# it to survive continuous harsh disturbances WITHOUT losing its stillness.
+# Arch + sigma bounds match spinkill_best so the warm-start transfers cleanly.
+# =============================================================================
 physics.integrator: RK4
-physics.maxTorque: 8.0
+physics.maxTorque: 8.0            # match spinkill (action scale must match warm-start)
 
 env.actuator: Dual
-env.task: Recovery
+env.task: Stabilize              # start each episode near the still pose so the policy
+                                 #   keeps EXPERIENCING stillness (then disturbances hit)
 env.maxEpisodeSteps: 2000
+
+# ---- Reward: dynamic torque + dynamic omega + settling bonus ----------------
 env.wUpright: 1.0
-env.wTorque: 0.01
-env.wOmega: 0.005
-env.wSurvival: 0.1
-env.omegaRefSpeed: 8.0
+env.wTorque: 0.2                 # HARSH weight near the top (monk stillness)
+env.wTorqueFar: 0.05            # softer far from upright (afford recovery) but not free
+env.torqueShaping: 4.0
+env.wOmega: 0.1                 # HARSH velocity penalty near the top (still + anti-spin)
+env.wOmegaFar: 0.005           # softer far from upright: ease kick-recovery velocity
+env.omegaShaping: 4.0
+env.omegaRefSpeed: 0
+env.stillnessSharpness: 0.0
+env.wSurvival: 0.0
+env.wSettled: 1.0               # STRONG dense bonus in the static pose -> the still
+                                 #   state clearly dominates any near-upright jitter
+env.staticAngleTol: 0.12
+env.staticVelTol: 0.40
+env.staticHoldSteps: 360
+
+# ---- Disturbances: hard but RECOVERABLE (so stillness stays reachable) -------
+# magnitude/prob chosen so the pendulum settles between kicks; the curriculum
+# ramps intensity in. Crank these up once it is robust at this level.
 env.domainRandomize: true
 env.drTimestepPct: 0.1
 env.disturbances: true
-env.disturbProb: 0.004
-env.disturbMagnitude: 3.0
+env.disturbProb: 0.003          # ~6 kicks per 2000-step episode
+env.disturbMagnitude: 3.0       # N(0,3): real knocks, but recoverable
 
-ppo.hidden1: 128
-ppo.hidden2: 128
-ppo.rolloutSteps: 4096
-ppo.numEnvs: 16                 # 16 decorrelated trajectories per update
+# ---- PPO (arch matches spinkill for the warm-start) -------------------------
+ppo.hidden1: 64
+ppo.hidden2: 64
+ppo.minLogStd: -1.0             # match spinkill sigma map; state-dependent head keeps
+                                #   sigma low at the top, high during recovery
+ppo.targetEntropyPerDim: 0.4    # lower than spin-kill: stop the aimless high-sigma drift
 ppo.entropyCoef: 0.005
+ppo.rolloutSteps: 4096
+ppo.numEnvs: 16
 
+# ---- Disturbance curriculum: ramp kick intensity 0 -> full ------------------
 curriculum.enabled: true
-curriculum.rampUpdates: 250
-curriculum.startEpisodeSteps: 800
+curriculum.rampUpdates: 200
+curriculum.startEpisodeSteps: 1000
 curriculum.endEpisodeSteps: 2000
-curriculum.rampDisturbances: true   # ramp kick intensity 0 -> 1
+curriculum.rampDisturbances: true
 
 train.seed: 11
-train.totalSteps: 5000000
+train.totalSteps: 10000000
 train.runName: ppo_recovery
+train.initFrom: models/spinkill_best.ckpt   # do not forget the static equilibrium

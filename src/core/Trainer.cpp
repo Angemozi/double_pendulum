@@ -31,6 +31,15 @@ Trainer::Trainer(const Config& cfg, SharedState* shared)
     // so it can reconstruct the exact env + network without the original config.
     cfg_.saveToFile(cfg_.train.modelDir + "/" + cfg_.train.runName + "_config.yaml");
 
+    // Warm-start: continue from a previously mastered policy (must match arch).
+    if (!cfg_.train.initFrom.empty()) {
+        if (agent_.load(cfg_.train.initFrom))
+            DP_LOG_INFO("Trainer: warm-started from '%s'", cfg_.train.initFrom.c_str());
+        else
+            DP_LOG_WARN("Trainer: warm-start failed ('%s') -- training from scratch",
+                        cfg_.train.initFrom.c_str());
+    }
+
     // Open the statistics CSV (reward curve + diagnostics).
     const std::string csvPath = cfg_.train.logDir + "/" + cfg_.train.runName + "_stats.csv";
     csv_.open(csvPath, {"update", "globalStep", "avgReturn100", "policyLoss",

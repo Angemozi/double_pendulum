@@ -115,6 +115,11 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "env.wOmega")   env.wOmega   = d();
         else if (key == "env.wSurvival")env.wSurvival= d();
         else if (key == "env.wEnergy")  env.wEnergy  = d();
+        else if (key == "env.wTorqueFar")    env.wTorqueFar = d();
+        else if (key == "env.torqueShaping") env.torqueShaping = d();
+        else if (key == "env.wOmegaFar")     env.wOmegaFar = d();
+        else if (key == "env.omegaShaping")  env.omegaShaping = d();
+        else if (key == "env.wSettled")      env.wSettled = d();
         else if (key == "env.stillnessSharpness") env.stillnessSharpness = d();
         else if (key == "env.staticAngleTol")  env.staticAngleTol = d();
         else if (key == "env.staticVelTol")    env.staticVelTol = d();
@@ -168,6 +173,7 @@ bool Config::loadFromFile(const std::string& path) {
         else if (key == "train.runName")  train.runName = val;
         else if (key == "train.modelDir") train.modelDir = val;
         else if (key == "train.logDir")   train.logDir = val;
+        else if (key == "train.initFrom") train.initFrom = val;
         else DP_LOG_WARN("Config: ignoring unknown key '%s'", key.c_str());
     }
     DP_LOG_INFO("Config: loaded '%s'", path.c_str());
@@ -194,6 +200,11 @@ bool Config::saveToFile(const std::string& path) const {
     os << "env.maxEpisodeSteps: " << env.maxEpisodeSteps << '\n';
     os << "env.omegaRefSpeed: " << env.omegaRefSpeed << '\n';
     os << "env.stillnessSharpness: " << env.stillnessSharpness << '\n';
+    os << "env.wTorqueFar: " << env.wTorqueFar << '\n';
+    os << "env.torqueShaping: " << env.torqueShaping << '\n';
+    os << "env.wOmegaFar: " << env.wOmegaFar << '\n';
+    os << "env.omegaShaping: " << env.omegaShaping << '\n';
+    os << "env.wSettled: " << env.wSettled << '\n';
     os << "env.staticAngleTol: " << env.staticAngleTol << '\n';
     os << "env.staticVelTol: " << env.staticVelTol << '\n';
     os << "env.staticHoldSteps: " << env.staticHoldSteps << '\n';

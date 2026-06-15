@@ -183,10 +183,33 @@ double DoublePendulumEnv::computeReward(const Action& a) const noexcept {
     const double stillness = (e.stillnessSharpness > 0.0)
         ? std::exp(-e.stillnessSharpness * omegaSq) : 1.0;
 
+    // Dynamic torque penalty: cheap far from upright (so the agent can afford the
+    // big torque needed for swing-up / kick recovery), ramping to the harsh
+    // wTorque near the top to enforce stillness. wTorqueFar < 0 => constant wTorque.
+    const double wTfar = (e.wTorqueFar >= 0.0) ? e.wTorqueFar : e.wTorque;
+    const double wTeff = wTfar + (e.wTorque - wTfar) * std::pow(upright, e.torqueShaping);
+
+    // Dynamic omega penalty (same shape): don't punish the unavoidable velocity of
+    // a kick-recovery swing far from upright, but harshly damp motion near the top.
+    const double wOfar = (e.wOmegaFar >= 0.0) ? e.wOmegaFar : e.wOmega;
+    const double wOeff = wOfar + (e.wOmega - wOfar) * std::pow(upright, e.omegaShaping);
+
     double r = e.wUpright * upright * stillness
-             - e.wTorque  * torqueCost
-             - e.wOmega   * omegaCost
+             - wTeff      * torqueCost
+             - wOeff      * omegaCost
              + e.wSurvival;
+
+    // Settling bonus: a dense reward for being inside the strict static pose
+    // (upright AND still). Because it pays every settled step, the policy is
+    // pushed to return to equilibrium as FAST as possible after a disturbance
+    // and to actively damp residual oscillation rather than coast.
+    if (e.wSettled > 0.0) {
+        const bool settled =
+            std::abs(math::wrapAngle(s.theta1 - math::kPi)) < e.staticAngleTol &&
+            std::abs(math::wrapAngle(s.theta2 - math::kPi)) < e.staticAngleTol &&
+            std::abs(s.omega1) < e.staticVelTol && std::abs(s.omega2) < e.staticVelTol;
+        if (settled) r += e.wSettled;
+    }
 
     // Energy-aware shaping: drive total mechanical energy toward E_top, the
     // energy of the (motionless) upright configuration. Normalized by |E_top| so

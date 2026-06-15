@@ -48,9 +48,26 @@ struct EnvConfig {
     double angularSpeedLimit = 50.0;     // |omega| above this terminates episode
     // Reward weights ---------------------------------------------------------
     double wUpright   = 1.0;             // reward for being inverted/upright
-    double wTorque    = 0.01;            // penalty per unit torque^2
+    double wTorque    = 0.01;            // torque penalty weight NEAR upright (harsh)
     double wOmega     = 0.005;           // penalty per unit angular velocity^2
     double wSurvival  = 0.0;             // flat per-step bonus for staying alive
+    // Dynamic torque penalty: when wTorqueFar >= 0 the effective torque weight is
+    //   wTorqueFar + (wTorque - wTorqueFar) * uprightScore^torqueShaping
+    // so torque is CHEAP far from upright (allows aggressive swing-up / recovery)
+    // and ramps to the harsh wTorque near the top (enforces monk-mode stillness).
+    // wTorqueFar < 0 disables this (constant wTorque everywhere).
+    double wTorqueFar    = -1.0;
+    double torqueShaping = 4.0;
+    // Dynamic OMEGA penalty (same idea, for velocity): soft far from upright so a
+    // kick-induced recovery swing isn't punished for velocity the agent could not
+    // avoid, harsh near the top to kill spin-at-the-top and enforce stillness.
+    // wOmegaFar < 0 => constant wOmega everywhere.
+    double wOmegaFar     = -1.0;
+    double omegaShaping  = 4.0;
+    // Dense settling bonus: + wSettled each step the system is within the strict
+    // static tolerances (see static* below). Maximizing settled steps == fastest
+    // possible time-to-recover after a disturbance. 0 disables.
+    double wSettled      = 0.0;
     // Energy-aware shaping: penalize |E - E_top| (energy of the upright rest
     // configuration). Classic swing-up aid -- rewards pumping the system to the
     // energy level required to reach the top. 0 disables.
@@ -141,6 +158,10 @@ struct TrainConfig {
     std::string runName      = "ppo_dp";
     std::string modelDir     = "models";
     std::string logDir       = "logs";
+    // Warm-start: if non-empty, load actor/critic weights from this checkpoint
+    // before training (must match obs/act dims + hidden sizes). Lets a new run
+    // continue from a mastered policy instead of relearning from scratch.
+    std::string initFrom     = "";
 };
 
 struct Config {
