@@ -123,19 +123,32 @@ SimFrame SimWorld::buildFrame(const Action& torque, const StepResult& sr,
     return f;
 }
 
-SimWorld::Heatmap SimWorld::computeHeatmap(int res, HeatmapKind kind) {
+SimWorld::Heatmap SimWorld::computeHeatmap(int res, HeatmapKind kind,
+                                           HeatmapSlice slice, State center) {
     Heatmap hm;
     hm.res = res;
     hm.data.assign(static_cast<std::size_t>(res) * res, 0.0f);
     if (!hasPolicy_ || res <= 0) { hm.lo = 0.0f; hm.hi = 1.0f; return hm; }
 
+    constexpr double kOmegaRange = 12.0;  // sweep omega in [-12, 12]
+    // Map the normalized grid coords (gx, gy in [-1,1]) onto a state, varying the
+    // two axes the slice selects and holding the rest at `center`.
+    auto stateAt = [&](double gx, double gy) {
+        State s = center;
+        switch (slice) {
+            case HeatmapSlice::Theta1Theta2: s.theta1 = gx * math::kPi; s.theta2 = gy * math::kPi; break;
+            case HeatmapSlice::Theta2Omega2: s.theta2 = gx * math::kPi; s.omega2 = gy * kOmegaRange; break;
+            case HeatmapSlice::Theta1Omega1: s.theta1 = gx * math::kPi; s.omega1 = gy * kOmegaRange; break;
+        }
+        return s;
+    };
+
     float lo = 1e30f, hi = -1e30f;
     for (int j = 0; j < res; ++j) {
-        // y axis -> theta2 in [-pi, pi]
-        const double th2 = -math::kPi + math::kTwoPi * (j + 0.5) / res;
+        const double gy = 2.0 * (j + 0.5) / res - 1.0;
         for (int i = 0; i < res; ++i) {
-            const double th1 = -math::kPi + math::kTwoPi * (i + 0.5) / res;
-            const Probe p = probe(State{th1, th2, 0.0, 0.0});
+            const double gx = 2.0 * (i + 0.5) / res - 1.0;
+            const Probe p = probe(stateAt(gx, gy));
             float v = 0.0f;
             switch (kind) {
                 case HeatmapKind::Torque: v = static_cast<float>(p.torque1); break;

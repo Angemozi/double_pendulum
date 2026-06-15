@@ -101,7 +101,7 @@ Gaussian**: it samples a pre-squash `u ~ N(μ(s), σ(s))`, applies `a = tanh(u) 
 reward =  wUpright · uprightScore                 (be inverted)
         − wTorque  · Σ τ² / maxTorque²            (cheap control)
         − wOmega   · (ω1² + ω2²)                  (no violent spinning)
-        + wSurvival                                (optional alive bonus)
+        + wSurvival            0                    (optional alive bonus)
 ```
 `uprightScore ∈ [0,1]` is a dense signal built from `−cos θ`, giving gradient even far from balance.
 
@@ -160,28 +160,36 @@ real-time rendering, fully separate from training. **Simulator controls:**
 | `←/→/↑/↓` | impulse disturbance | `1/2/3` | load best/latest/final |
 | `D` | random kick | `O` / `P` | record / save replay |
 | `F` | follow-latest (hot-reload) | `H` | cycle policy/value/σ heatmap |
-| `C` | clear trail | `L` | cycle library playback (best/fail/recovery) |
+| `G` | cycle heatmap slice axes | `L` | cycle library playback (best/fail/recovery) |
+| `C` | clear trail | `Esc` | quit |
 
 The HUD shows reward, torque, value V(s), entropy, σ, upright score, and energy, with live graphs of
 reward/value/entropy/σ and a fading trajectory trail of the tip. Checkpoints are **self-describing**, so
 `dp_simulator --model models/<run>_best.ckpt` needs no `--config`. Point `F` (follow-latest) at
 `<run>_latest.ckpt` to watch a live training run improve in real time; `H` overlays a policy/value/σ heatmap
-swept over (θ₁, θ₂); the simulator auto-captures best/failure/recovery episodes for `L` playback.
+that `G` re-slices through (θ₁,θ₂)/(θ₂,ω₂)/(θ₁,ω₁) around the live state; the simulator auto-captures
+best/failure/recovery episodes that `L` plays back with a **draggable timeline scrubber**.
+
+A headless `dp_simulator --selftest [--model …]` exercises stepping, heatmaps, recorder round-trip, and config
+auto-load without opening a window — useful for CI / verifying a build.
 
 ### With the legacy visualizer (SDL2 + Dear ImGui)
 
 ```bash
-# Requires SDL2 discoverable by find_package (e.g. vcpkg, apt, or SDL2_DIR).
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_RENDERER=ON
-cmake --build build --config Release -j
+cmake -S . -B build-viz -DCMAKE_BUILD_TYPE=Release -DBUILD_RENDERER=ON
+cmake --build build-viz --config Release -j
 ```
-Dear ImGui is fetched automatically via `FetchContent`. On Windows, vcpkg is the easiest SDL2 source:
-`-DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake`.
+Both **SDL2 and Dear ImGui are fetched and built automatically** via `FetchContent` (SDL2 is built static) —
+no system packages required. `dp_simulator` (raylib) supersedes this; it's kept for reference.
 
-### Optional LibTorch backend hook
+### Optional LibTorch/CUDA backend
 ```bash
-cmake -S . -B build -DDP_WITH_LIBTORCH=ON -DCMAKE_PREFIX_PATH=/path/to/libtorch
+cmake -S . -B build-torch -DDP_WITH_LIBTORCH=ON -DCMAKE_PREFIX_PATH=/path/to/libtorch
+cmake --build build-torch --config Release
 ```
+`dp_train_torch` runs the actor-critic on the GPU. Because its network is architecturally identical to the CPU
+`MLP`, it exports a **portable `<run>_torch.ckpt`** (plus the native `.pt`) that loads directly in
+`dp_simulator` / `dp_eval` with no LibTorch — so GPU-trained policies run in the simulator and CPU tools.
 
 ---
 

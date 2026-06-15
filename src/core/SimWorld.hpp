@@ -89,12 +89,18 @@ public:
     struct Probe { double torque1, torque2, value, meanSigma; };
     Probe probe(const State& s);
 
-    // A res x res scalar field sampled over (theta1, theta2) in [-pi,pi] (with
-    // omega = 0), row-major, plus its min/max for color mapping. This is the
-    // primitive behind the policy/value/sigma heatmap overlays.
-    enum class HeatmapKind { Torque, Value, Sigma };
+    // A res x res scalar field, row-major, plus its min/max for color mapping --
+    // the primitive behind the policy/value/sigma heatmap overlays.
+    //   kind  = which scalar to sample (torque1 / value / mean sigma).
+    //   slice = which two state axes sweep the grid; the OTHER two dims are held
+    //           at `center` (typically the live state), so you can inspect the
+    //           policy on a 2-D slice through the 4-D state space.
+    enum class HeatmapKind  { Torque, Value, Sigma };
+    enum class HeatmapSlice { Theta1Theta2, Theta2Omega2, Theta1Omega1 };
     struct Heatmap { int res = 0; std::vector<float> data; float lo = 0, hi = 1; };
-    Heatmap computeHeatmap(int res, HeatmapKind kind);
+    Heatmap computeHeatmap(int res, HeatmapKind kind,
+                           HeatmapSlice slice = HeatmapSlice::Theta1Theta2,
+                           State center = State{});
 
 private:
     SimFrame buildFrame(const Action& torque, const StepResult& sr,

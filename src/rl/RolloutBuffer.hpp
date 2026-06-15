@@ -29,9 +29,9 @@ struct Transition {
     double value   = 0.0; // V_old(s)
     double reward  = 0.0;
     bool   done    = false; // terminal OR truncated boundary (bootstrap cut)
-
-    bool   truncated = false; // time limit cut
-    double nextVaule = 0.0; // V(s_{t+1}) of the SAME episode, used at a truncation   
+    // --- episode-boundary handling for GAE ---
+    bool   truncated = false; // time limit cut: bootstrap from nextValue, no carry
+    double nextValue = 0.0; // V(s_{t+1}) of the SAME episode, used at a truncation
 
     // Filled in by computeGAE():
     double advantage = 0.0;
@@ -63,6 +63,22 @@ public:
         double nextAdv   = 0.0;
         for (std::size_t idx = n; idx-- > 0;) {
             Transition& t = data_[idx];
+
+            // Decide the bootstrap value and the advantage carry for THIS step,
+            // resetting both at episode boundaries so advantage never leaks across
+            // an episode (which the old single-mask recursion did at truncations).
+            double vNext, advCarry;
+            if (t.done) {
+                vNext = 0.0;            // true terminal: no future value
+                advCarry = 0.0;         // chain resets
+            } else if (t.truncated) {
+                vNext = t.nextValue;    // time-limit cut: bootstrap from the real next state
+                advCarry = 0.0;         // but the next episode's advantage must NOT flow back
+            } else {
+                vNext = nextValue;      // mid-episode: chain normally
+                advCarry = nextAdv;
+            }
+            
             const double mask = t.done ? 0.0 : 1.0; // zero the bootstrap at episode ends
             const double delta = t.reward + gamma * nextValue * mask - t.value;
             t.advantage = delta + gamma * lambda * mask * nextAdv;

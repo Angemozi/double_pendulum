@@ -45,6 +45,11 @@ const char* argValue(int argc, char** argv, const char* flag) {
         if (std::strcmp(argv[i], flag) == 0) return argv[i + 1];
     return nullptr;
 }
+bool hasFlag(int argc, char** argv, const char* flag) {
+    for (int i = 1; i < argc; ++i)
+        if (std::strcmp(argv[i], flag) == 0) return true;
+    return false;
+}
 
 constexpr float kPPM = 120.0f;     // pixels per meter at zoom 1
 constexpr int   kHistory = 400;    // graph history length
@@ -99,11 +104,6 @@ void drawGraph(const std::deque<float>& data, float x, float y, float w, float h
     DrawText(TextFormat("%.2f", data.back()), (int)(x + w) - 44, (int)y + 2, 10, color);
 }
 
-const char* heatLabel(int k) {
-    return k == 1 ? "torque(theta1,theta2)" : k == 2 ? "value(theta1,theta2)"
-         : k == 3 ? "sigma(theta1,theta2)"  : "off";
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -123,6 +123,26 @@ int main(int argc, char** argv) {
 
     const std::string replayDir = cfg.train.modelDir + "/replays";
     std::error_code ec; fs::create_directories(replayDir, ec);
+
+    // Headless self-test: exercise every non-render runtime path (stepping,
+    // heatmaps, recorder round-trip, hot-reload check) and exit. Lets a
+    // windowless environment / CI verify the simulator's logic without a GPU.
+    if (hasFlag(argc, argv, "--selftest")) {
+        DP_LOG_INFO("dp_simulator selftest: policy=%s", world.hasPolicy() ? "yes" : "none");
+        for (int i = 0; i < 2000; ++i) (void)world.step();
+        const auto hmT = world.computeHeatmap(24, SimWorld::HeatmapKind::Torque);
+        const auto hmV = world.computeHeatmap(24, SimWorld::HeatmapKind::Value);
+        const auto hmS = world.computeHeatmap(24, SimWorld::HeatmapKind::Sigma);
+        EpisodeRecorder rec;
+        for (int i = 0; i < 100; ++i) rec.record(world.step());
+        const std::string rp = replayDir + "/selftest.dprec";
+        EpisodeRecorder back;
+        const bool ok = rec.saveBinary(rp) && back.loadBinary(rp) && back.size() == rec.size();
+        world.reloadIfChanged();
+        DP_LOG_INFO("dp_simulator selftest: heatmaps %zu/%zu/%zu cells, replay roundtrip %s",
+                    hmT.data.size(), hmV.data.size(), hmS.data.size(), ok ? "OK" : "FAIL");
+        return ok ? 0 : 1;
+    }
 
     const int screenW = 1280, screenH = 800;
     InitWindow(screenW, screenH, "Double Pendulum RL -- Simulator");
@@ -151,6 +171,7 @@ int main(int argc, char** argv) {
     };
 
     int heat = 0;                         // 0 off, 1 torque, 2 value, 3 sigma
+    int heatSlice = 0;                    // 0 th1/th2, 1 th2/w2, 2 th1/w1
     SimWorld::Heatmap heatmap; double heatTimer = 0.0;
     double reloadTimer = 0.0;
 
@@ -191,6 +212,7 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_LEFT_BRACKET))  speed = std::max(0.05, speed / 1.5);
         if (IsKeyPressed(KEY_F)) followLatest = !followLatest;
         if (IsKeyPressed(KEY_H)) { heat = (heat + 1) % 4; heatTimer = 0.0; }
+        if (IsKeyPressed(KEY_G)) { heatSlice = (heatSlice + 1) % 3; heatTimer = 0.0; }
 
         const double kick = 5.0;
         if (IsKeyPressed(KEY_LEFT))  world.applyImpulse(-kick, 0.0);
@@ -247,6 +269,8 @@ int main(int argc, char** argv) {
                     accumulator -= dt;
                     playIdx = (playIdx + 1) % playRec.size();
                 }
+            } else if (frameStep) {
+                playIdx = (playIdx + 1) % playRec.size();   // step one recorded frame
             }
         } else if (!paused) {
             accumulator += GetFrameTime() * speed;
@@ -266,7 +290,11 @@ int main(int argc, char** argv) {
             heatTimer = 0.5;
             const SimWorld::HeatmapKind k = heat == 1 ? SimWorld::HeatmapKind::Torque
                 : heat == 2 ? SimWorld::HeatmapKind::Value : SimWorld::HeatmapKind::Sigma;
-            heatmap = world.computeHeatmap(kHeatRes, k);
+            const SimWorld::HeatmapSlice sl = heatSlice == 1 ? SimWorld::HeatmapSlice::Theta2Omega2
+                : heatSlice == 2 ? SimWorld::HeatmapSlice::Theta1Omega1
+                : SimWorld::HeatmapSlice::Theta1Theta2;
+            // Slice through the LIVE state so off-axis dims reflect the current pose.
+            heatmap = world.computeHeatmap(kHeatRes, k, sl, world.last().state);
         }
 
         const SimFrame& f = world.last();
@@ -308,7 +336,9 @@ int main(int argc, char** argv) {
             const int cell = 5, dim = heatmap.res * cell;
             const int ox = screenW - dim - 16, oy = 250;
             DrawRectangle(ox - 2, oy - 18, dim + 4, dim + 22, Fade(BLACK, 0.5f));
-            DrawText(heatLabel(heat), ox, oy - 16, 12, RAYWHITE);
+            const char* kindN = heat == 1 ? "torque" : heat == 2 ? "value" : "sigma";
+            const char* axes  = heatSlice == 1 ? "th2 x w2" : heatSlice == 2 ? "th1 x w1" : "th1 x th2";
+            DrawText(TextFormat("%s [%s]  (G slice)", kindN, axes), ox, oy - 16, 12, RAYWHITE);
             const float span = heatmap.hi - heatmap.lo;
             for (int j = 0; j < heatmap.res; ++j)
                 for (int i = 0; i < heatmap.res; ++i) {
@@ -316,6 +346,24 @@ int main(int argc, char** argv) {
                     DrawRectangle(ox + i * cell, oy + j * cell, cell, cell,
                                   heatColor((v - heatmap.lo) / span));
                 }
+        }
+
+        // ---- Playback scrubber ---------------------------------------------
+        if (playback != 0 && !playRec.empty()) {
+            const float bx = 200, bw = screenW - 460, by = screenH - 118, bh = 12;
+            const std::size_t last = playRec.size() - 1;
+            const Vector2 m = GetMousePosition();
+            const bool hover = m.x >= bx && m.x <= bx + bw && m.y >= by - 8 && m.y <= by + bh + 8;
+            if (hover && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                const float tpos = std::clamp((m.x - bx) / bw, 0.0f, 1.0f);
+                playIdx = static_cast<std::size_t>(tpos * last);
+            }
+            DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, Fade(GRAY, 0.45f));
+            const float frac = last ? static_cast<float>(playIdx) / static_cast<float>(last) : 0.0f;
+            DrawRectangle((int)bx, (int)by, (int)(bw * frac), (int)bh, VIOLET);
+            DrawCircleV({ bx + bw * frac, by + bh * 0.5f }, 7, RAYWHITE);
+            DrawText(TextFormat("frame %zu / %zu   (drag to scrub | . step | SPACE pause)",
+                     playIdx, playRec.size()), (int)bx, (int)by - 16, 12, RAYWHITE);
         }
 
         // ---- HUD ------------------------------------------------------------
@@ -352,7 +400,7 @@ int main(int argc, char** argv) {
         auto ctl = [&](const char* t){ DrawText(t, cx, cy, 13, Fade(RAYWHITE, 0.8f)); cy += 15; };
         ctl("SPACE pause  R reset  . step");
         ctl("T stochastic   F follow-latest");
-        ctl("H heatmap  L playback library");
+        ctl("H heatmap  G slice  L playback");
         ctl("ARROWS impulse  D random kick");
         ctl("[ / ] slower / faster");
         ctl("wheel zoom  R-drag pan  HOME");

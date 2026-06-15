@@ -117,9 +117,26 @@ endif()
 
 # ---- Optional legacy renderer (SDL2 + Dear ImGui) ---------------------------
 if(BUILD_RENDERER)
-    find_package(SDL2 REQUIRED)
-
     include(FetchContent)
+
+    # SDL2 is fetched and built (static) from source -- no system package needed,
+    # mirroring how raylib/ImGui are vendored. This makes BUILD_RENDERER=ON
+    # configure cleanly on a fresh clone.
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON  CACHE BOOL "" FORCE)
+    set(SDL_TEST   OFF CACHE BOOL "" FORCE)
+    set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL2
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG        release-2.30.11)
+    FetchContent_MakeAvailable(SDL2)
+    # The static build exports SDL2::SDL2-static; fall back to SDL2::SDL2.
+    if(TARGET SDL2::SDL2-static)
+        set(DP_SDL2_LIB SDL2::SDL2-static)
+    else()
+        set(DP_SDL2_LIB SDL2::SDL2)
+    endif()
+
     FetchContent_Declare(imgui
         GIT_REPOSITORY https://github.com/ocornut/imgui.git
         GIT_TAG        v1.91.5)
@@ -134,11 +151,11 @@ if(BUILD_RENDERER)
         ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer2.cpp)
     target_include_directories(imgui PUBLIC
         ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-    target_link_libraries(imgui PUBLIC SDL2::SDL2)
+    target_link_libraries(imgui PUBLIC ${DP_SDL2_LIB})
 
     add_executable(dp_viz src/app/viz_main.cpp)
     target_compile_definitions(dp_viz PRIVATE DP_WITH_RENDERER=1)
-    target_link_libraries(dp_viz PRIVATE dp_core imgui SDL2::SDL2)
+    target_link_libraries(dp_viz PRIVATE dp_core imgui ${DP_SDL2_LIB})
     if(TARGET SDL2::SDL2main)
         target_link_libraries(dp_viz PRIVATE SDL2::SDL2main)
     endif()

@@ -26,6 +26,8 @@
 
 #include <cstring>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <vector>
 
 #include "core/Config.hpp"
@@ -91,6 +93,38 @@ torch::Tensor gaussianLogProb(torch::Tensor mean, torch::Tensor logStd, torch::T
     const auto z = (action - mean) / std;
     const auto lp = -0.5 * z * z - logStd - 0.5 * std::log(2.0 * M_PI);
     return lp.sum(-1);
+}
+
+// ---- Portable checkpoint bridge ---------------------------------------------
+// The Torch ActorCritic is architecturally IDENTICAL to the CPU MLP
+// (in->h1->tanh->h2->tanh->head). We therefore export the weights in the exact
+// text format PPOAgent::save() produces ("DPPPO 2"), so a GPU-trained policy
+// loads directly in dp_simulator / dp_eval with no LibTorch and no ONNX.
+// PyTorch's Linear weight is [out, in] row-major, matching our W[o*in + i] and
+// y[o] = sum_i W[o*in+i] x[i] + b[o].
+void writeLinear(std::ostream& os, const torch::nn::Linear& lin) {
+    const auto w = lin->weight.detach().to(torch::kCPU).to(torch::kDouble).contiguous();
+    const auto b = lin->bias.detach().to(torch::kCPU).to(torch::kDouble).contiguous();
+    const int out = static_cast<int>(w.size(0)), in = static_cast<int>(w.size(1));
+    os << in << ' ' << out << '\n';
+    const double* wp = w.data_ptr<double>();
+    for (long k = 0; k < static_cast<long>(in) * out; ++k) os << wp[k] << ' ';
+    os << '\n';
+    const double* bp = b.data_ptr<double>();
+    for (int o = 0; o < out; ++o) os << bp[o] << ' ';
+    os << '\n';
+}
+
+void exportPortableCkpt(ActorCritic& net, int obsDim, int actDim, const std::string& path) {
+    std::ofstream os(path, std::ios::trunc);
+    if (!os.is_open()) { DP_LOG_ERROR("export ckpt failed: %s", path.c_str()); return; }
+    os.precision(17);
+    os << "DPPPO 2\n" << obsDim << ' ' << actDim << '\n';
+    os << obsDim << ' ' << (2 * actDim) << '\n';          // actor MLP header
+    writeLinear(os, net->a1); writeLinear(os, net->a2); writeLinear(os, net->aHead);
+    os << obsDim << ' ' << 1 << '\n';                      // critic MLP header
+    writeLinear(os, net->c1); writeLinear(os, net->c2); writeLinear(os, net->cVal);
+    DP_LOG_INFO("dp_train_torch: exported portable checkpoint '%s'", path.c_str());
 }
 
 } // namespace
@@ -240,7 +274,11 @@ int main(int argc, char** argv) {
                         update, globalStep, lastEntropy, lastKL, lrScale);
     }
 
-    torch::save(net, cfg.train.modelDir + "/" + cfg.train.runName + "_torch.pt");
-    DP_LOG_INFO("dp_train_torch: done, saved model.");
+    const std::string stem = cfg.train.modelDir + "/" + cfg.train.runName;
+    std::error_code mkec; std::filesystem::create_directories(cfg.train.modelDir, mkec);
+    torch::save(net, stem + "_torch.pt");                         // native LibTorch
+    cfg.saveToFile(stem + "_torch_config.yaml");                  // self-describing sidecar
+    exportPortableCkpt(net, obsDim, actDim, stem + "_torch.ckpt"); // loads in dp_simulator
+    DP_LOG_INFO("dp_train_torch: done. .pt + portable .ckpt written.");
     return 0;
 }
